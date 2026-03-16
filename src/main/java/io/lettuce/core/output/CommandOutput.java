@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -16,6 +20,7 @@
 package io.lettuce.core.output;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 
 import io.lettuce.core.codec.RedisCodec;
 import io.lettuce.core.internal.LettuceAssert;
@@ -135,7 +140,7 @@ public abstract class CommandOutput<K, V, T> {
      * @param error Error message.
      */
     public void setError(ByteBuffer error) {
-        this.error = decodeAscii(error);
+        this.error = decodeString(error);
     }
 
     /**
@@ -175,16 +180,8 @@ public abstract class CommandOutput<K, V, T> {
         // nothing to do by default
     }
 
-    protected String decodeAscii(ByteBuffer bytes) {
-        if (bytes == null) {
-            return null;
-        }
-
-        char[] chars = new char[bytes.remaining()];
-        for (int i = 0; i < chars.length; i++) {
-            chars[i] = (char) bytes.get();
-        }
-        return new String(chars);
+    protected String decodeString(ByteBuffer bytes) {
+        return bytes == null ? null : StandardCharsets.UTF_8.decode(bytes).toString();
     }
 
     @Override

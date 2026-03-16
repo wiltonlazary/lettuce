@@ -1,21 +1,6 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.output;
 
-import static java.lang.Double.parseDouble;
+import static java.lang.Double.*;
 
 import java.nio.ByteBuffer;
 import java.util.Collections;
@@ -33,6 +18,8 @@ import io.lettuce.core.internal.LettuceAssert;
  */
 public class GeoCoordinatesValueListOutput<K, V> extends CommandOutput<K, V, List<Value<GeoCoordinates>>>
         implements StreamingOutput<Value<GeoCoordinates>> {
+
+    boolean hasX;
 
     private Double x;
 
@@ -53,20 +40,22 @@ public class GeoCoordinatesValueListOutput<K, V> extends CommandOutput<K, V, Lis
             return;
         }
 
-        double value = parseDouble(decodeAscii(bytes));
+        double value = parseDouble(decodeString(bytes));
         set(value);
     }
 
     @Override
     public void set(double number) {
 
-        if (x == null) {
+        if (!hasX) {
             x = number;
+            hasX = true;
             return;
         }
 
         subscriber.onNext(output, Value.fromNullable(new GeoCoordinates(x, number)));
         x = null;
+        hasX = false;
     }
 
     @Override

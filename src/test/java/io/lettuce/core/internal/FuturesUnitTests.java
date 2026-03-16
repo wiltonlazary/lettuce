@@ -1,27 +1,20 @@
-/*
- * Copyright 2020-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.internal;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import io.lettuce.core.RedisCommandExecutionException;
@@ -31,7 +24,9 @@ import io.lettuce.core.RedisCommandInterruptedException;
  * Unit tests for {@link Futures}.
  *
  * @author Mark Paluch
+ * @author Tihomir Mateev
  */
+@Tag(UNIT_TEST)
 class FuturesUnitTests {
 
     @BeforeEach
@@ -70,4 +65,34 @@ class FuturesUnitTests {
 
         assertThat(Thread.currentThread().isInterrupted()).isTrue();
     }
+
+    @Test
+    void allOfShouldNotThrow() throws InterruptedException {
+        int threadCount = 100;
+        ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
+        List<Throwable> issues = new ArrayList<>();
+        List<CompletableFuture<Void>> futures = Collections.synchronizedList(new ArrayList<>());
+        // Submit multiple threads to perform concurrent operations
+        CountDownLatch latch = new CountDownLatch(threadCount);
+        for (int i = 0; i < threadCount; i++) {
+            executorService.submit(() -> {
+                try {
+                    for (int y = 0; y < 1000; y++) {
+                        futures.add(new CompletableFuture<>());
+                    }
+
+                    Futures.allOf(futures);
+                } catch (Exception e) {
+                    issues.add(e);
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+
+        // wait for all threads to complete
+        latch.await();
+        assertThat(issues).doesNotHaveAnyElementsOfTypes(ArrayIndexOutOfBoundsException.class);
+    }
+
 }

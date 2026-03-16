@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static io.lettuce.core.RedisURI.Builder.redis;
 import static io.lettuce.core.codec.StringCodec.UTF8;
 import static java.util.concurrent.TimeUnit.SECONDS;
@@ -27,8 +32,9 @@ import java.util.concurrent.TimeoutException;
 
 import javax.inject.Inject;
 
-import org.junit.jupiter.api.BeforeEach;
+import io.lettuce.core.protocol.ProtocolVersion;
 import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -41,22 +47,17 @@ import io.lettuce.test.LettuceExtension;
 /**
  * @author Mark Paluch
  * @author Jongyeol Choi
+ * @author Hari Mani
  */
 @ExtendWith(LettuceExtension.class)
+@Tag(INTEGRATION_TEST)
 class RedisClientConnectIntegrationTests extends TestSupport {
-
-    private static final Duration EXPECTED_TIMEOUT = Duration.ofMillis(500);
 
     private final RedisClient client;
 
     @Inject
     RedisClientConnectIntegrationTests(RedisClient client) {
         this.client = client;
-    }
-
-    @BeforeEach
-    void before() {
-        client.setDefaultTimeout(EXPECTED_TIMEOUT);
     }
 
     /*
@@ -66,14 +67,14 @@ class RedisClientConnectIntegrationTests extends TestSupport {
     void connectClientUri() {
 
         StatefulRedisConnection<String, String> connection = client.connect();
-        assertThat(connection.getTimeout()).isEqualTo(EXPECTED_TIMEOUT);
+        assertThat(connection.getTimeout()).isEqualTo(RedisURI.DEFAULT_TIMEOUT_DURATION);
         connection.close();
     }
 
     @Test
     void connectCodecClientUri() {
         StatefulRedisConnection<String, String> connection = client.connect(UTF8);
-        assertThat(connection.getTimeout()).isEqualTo(EXPECTED_TIMEOUT);
+        assertThat(connection.getTimeout()).isEqualTo(RedisURI.DEFAULT_TIMEOUT_DURATION);
         connection.close();
     }
 
@@ -125,29 +126,29 @@ class RedisClientConnectIntegrationTests extends TestSupport {
     @Test
     @Disabled("Non-deterministic behavior. Can cause a deadlock")
     void shutdownSyncInRedisFutureTest() {
-
-        RedisClient redisClient = RedisClient.create();
-        StatefulRedisConnection<String, String> connection = redisClient.connect(redis(host, port).build());
-
-        CompletableFuture<String> f = connection.async().get("key1").whenComplete((result, e) -> {
-            connection.close();
-            redisClient.shutdown(0, 0, SECONDS); // deadlock expected.
+        try (final RedisClient redisClient = RedisClient.create();
+                final StatefulRedisConnection<String, String> connection = redisClient.connect(redis(host, port).build())) {
+            CompletableFuture<String> f = connection.async().get("key1").whenComplete((result, e) -> {
+                connection.close();
+                redisClient.shutdown(0, 0, SECONDS); // deadlock expected.
             }).toCompletableFuture();
 
-        assertThatThrownBy(() -> TestFutures.awaitOrTimeout(f)).isInstanceOf(TimeoutException.class);
+            assertThatThrownBy(() -> TestFutures.awaitOrTimeout(f)).isInstanceOf(TimeoutException.class);
+        }
     }
 
     @Test
     void shutdownAsyncInRedisFutureTest() {
 
-        RedisClient redisClient = RedisClient.create();
-        StatefulRedisConnection<String, String> connection = redisClient.connect(redis(host, port).build());
-        CompletableFuture<Void> f = connection.async().get("key1").thenCompose(result -> {
-            connection.close();
-            return redisClient.shutdownAsync(0, 0, SECONDS);
-        }).toCompletableFuture();
+        try (final RedisClient redisClient = RedisClient.create();
+                final StatefulRedisConnection<String, String> connection = redisClient.connect(redis(host, port).build())) {
+            CompletableFuture<Void> f = connection.async().get("key1").thenCompose(result -> {
+                connection.close();
+                return redisClient.shutdownAsync(0, 0, SECONDS);
+            }).toCompletableFuture();
 
-        TestFutures.awaitOrTimeout(f);
+            TestFutures.awaitOrTimeout(f);
+        }
     }
 
     /*
@@ -156,14 +157,14 @@ class RedisClientConnectIntegrationTests extends TestSupport {
     @Test
     void connectPubSubClientUri() {
         StatefulRedisPubSubConnection<String, String> connection = client.connectPubSub();
-        assertThat(connection.getTimeout()).isEqualTo(EXPECTED_TIMEOUT);
+        assertThat(connection.getTimeout()).isEqualTo(RedisURI.DEFAULT_TIMEOUT_DURATION);
         connection.close();
     }
 
     @Test
     void connectPubSubCodecClientUri() {
         StatefulRedisPubSubConnection<String, String> connection = client.connectPubSub(UTF8);
-        assertThat(connection.getTimeout()).isEqualTo(EXPECTED_TIMEOUT);
+        assertThat(connection.getTimeout()).isEqualTo(RedisURI.DEFAULT_TIMEOUT_DURATION);
         connection.close();
     }
 
@@ -196,8 +197,7 @@ class RedisClientConnectIntegrationTests extends TestSupport {
     @Test
     void connectPubSubAsync() {
         RedisURI redisURI = redis(host, port).build();
-        ConnectionFuture<StatefulRedisPubSubConnection<String, String>> future = client.connectPubSubAsync(
-UTF8, redisURI);
+        ConnectionFuture<StatefulRedisPubSubConnection<String, String>> future = client.connectPubSubAsync(UTF8, redisURI);
         StatefulRedisPubSubConnection<String, String> connection = future.join();
         assertThat(connection.getTimeout()).isEqualTo(redisURI.getTimeout());
         connection.close();
@@ -213,20 +213,37 @@ UTF8, redisURI);
         assertThatThrownBy(() -> client.connectPubSub(UTF8, invalidSentinel())).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void connectPubSubAsyncReauthNotSupportedWithRESP2() {
+        ClientOptions.ReauthenticateBehavior reauth = client.getOptions().getReauthenticateBehaviour();
+        ProtocolVersion protocolVersion = client.getOptions().getConfiguredProtocolVersion();
+        try {
+            client.setOptions(client.getOptions().mutate().protocolVersion(ProtocolVersion.RESP2)
+                    .reauthenticateBehavior(ClientOptions.ReauthenticateBehavior.ON_NEW_CREDENTIALS).build());
+
+            RedisURI redisURI = redis(host, port).build();
+            assertThatThrownBy(() -> client.connectPubSubAsync(UTF8, redisURI)).isInstanceOf(RedisConnectionException.class);
+
+        } finally {
+            client.setOptions(
+                    client.getOptions().mutate().protocolVersion(protocolVersion).reauthenticateBehavior(reauth).build());
+        }
+    }
+
     /*
      * Sentinel Stateful
      */
     @Test
     void connectSentinelClientUri() {
         StatefulRedisSentinelConnection<String, String> connection = client.connectSentinel();
-        assertThat(connection.getTimeout()).isEqualTo(EXPECTED_TIMEOUT);
+        assertThat(connection.getTimeout()).isEqualTo(RedisURI.DEFAULT_TIMEOUT_DURATION);
         connection.close();
     }
 
     @Test
     void connectSentinelCodecClientUri() {
         StatefulRedisSentinelConnection<String, String> connection = client.connectSentinel(UTF8);
-        assertThat(connection.getTimeout()).isEqualTo(EXPECTED_TIMEOUT);
+        assertThat(connection.getTimeout()).isEqualTo(RedisURI.DEFAULT_TIMEOUT_DURATION);
         connection.close();
     }
 
@@ -274,4 +291,5 @@ UTF8, redisURI);
 
         return redisURI;
     }
+
 }

@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -24,12 +28,14 @@ import io.lettuce.core.cluster.api.coroutines.RedisClusterCoroutinesCommands
  * @param <K> Key type.
  * @param <V> Value type.
  * @author Mikhael Sokolov
+ * @author Tihomir Mateev
  * @since 6.0
  */
 @ExperimentalLettuceCoroutinesApi
 interface RedisCoroutinesCommands<K : Any, V : Any> :
     BaseRedisCoroutinesCommands<K, V>,
     RedisAclCoroutinesCommands<K, V>,
+    RedisFunctionCoroutinesCommands<K, V>,
     RedisGeoCoroutinesCommands<K, V>,
     RedisHashCoroutinesCommands<K, V>,
     RedisHLLCoroutinesCommands<K, V>,
@@ -42,7 +48,9 @@ interface RedisCoroutinesCommands<K : Any, V : Any> :
     RedisStreamCoroutinesCommands<K, V>,
     RedisStringCoroutinesCommands<K, V>,
     RedisTransactionalCoroutinesCommands<K, V>,
-    RedisClusterCoroutinesCommands<K, V> {
+    RedisClusterCoroutinesCommands<K, V>,
+    RedisJsonCoroutinesCommands<K, V>,
+    RedisVectorSetCoroutinesCommands<K, V>{
 
     /**
      * Authenticate to the server.

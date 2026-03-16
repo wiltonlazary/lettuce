@@ -1,24 +1,8 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.cluster;
 
-import static io.lettuce.core.ScriptOutputType.*;
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.*;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -32,6 +16,7 @@ import java.util.stream.Collectors;
 
 import javax.inject.Inject;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -49,7 +34,6 @@ import io.lettuce.core.internal.LettuceSets;
 import io.lettuce.core.output.StringListOutput;
 import io.lettuce.core.protocol.CommandArgs;
 import io.lettuce.core.protocol.CommandType;
-import io.lettuce.test.Delay;
 import io.lettuce.test.LettuceExtension;
 import io.lettuce.test.TestFutures;
 import io.lettuce.test.Wait;
@@ -57,10 +41,12 @@ import io.lettuce.test.Wait;
 /**
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 class NodeSelectionAsyncIntegrationTests extends TestSupport {
 
     private final RedisClusterClient clusterClient;
+
     private final RedisAdvancedClusterAsyncCommands<String, String> commands;
 
     @Inject
@@ -138,15 +124,15 @@ class NodeSelectionAsyncIntegrationTests extends TestSupport {
         assertThat(commands.slaves().size()).isEqualTo(2);
         assertThat(commands.masters().size()).isEqualTo(2);
 
-        assertThat(commands.nodes(redisClusterNode -> redisClusterNode.is(RedisClusterNode.NodeFlag.MYSELF)).size()).isEqualTo(
-                1);
+        assertThat(commands.nodes(redisClusterNode -> redisClusterNode.is(RedisClusterNode.NodeFlag.MYSELF)).size())
+                .isEqualTo(1);
     }
 
     @Test
     void testNodeSelection() {
 
-        AsyncNodeSelection<String, String> onlyMe = commands.nodes(redisClusterNode -> redisClusterNode.getFlags().contains(
-                RedisClusterNode.NodeFlag.MYSELF));
+        AsyncNodeSelection<String, String> onlyMe = commands
+                .nodes(redisClusterNode -> redisClusterNode.getFlags().contains(RedisClusterNode.NodeFlag.MYSELF));
         Map<RedisClusterNode, RedisAsyncCommands<String, String>> map = onlyMe.asMap();
 
         assertThat(map).hasSize(1);
@@ -164,19 +150,19 @@ class NodeSelectionAsyncIntegrationTests extends TestSupport {
     void testDynamicNodeSelection() {
 
         Partitions partitions = commands.getStatefulConnection().getPartitions();
-        partitions.forEach(redisClusterNode -> redisClusterNode.setFlags(Collections
-                .singleton(RedisClusterNode.NodeFlag.UPSTREAM)));
+        partitions.forEach(
+                redisClusterNode -> redisClusterNode.setFlags(Collections.singleton(RedisClusterNode.NodeFlag.UPSTREAM)));
 
-        AsyncNodeSelection<String, String> selection = commands.nodes(
-                redisClusterNode -> redisClusterNode.getFlags().contains(RedisClusterNode.NodeFlag.MYSELF), true);
+        AsyncNodeSelection<String, String> selection = commands
+                .nodes(redisClusterNode -> redisClusterNode.getFlags().contains(RedisClusterNode.NodeFlag.MYSELF), true);
 
         assertThat(selection.asMap()).hasSize(0);
-        partitions.getPartition(0).setFlags(
-                LettuceSets.unmodifiableSet(RedisClusterNode.NodeFlag.MYSELF, RedisClusterNode.NodeFlag.UPSTREAM));
+        partitions.getPartition(0)
+                .setFlags(LettuceSets.unmodifiableSet(RedisClusterNode.NodeFlag.MYSELF, RedisClusterNode.NodeFlag.UPSTREAM));
         assertThat(selection.asMap()).hasSize(1);
 
-        partitions.getPartition(1).setFlags(
-                LettuceSets.unmodifiableSet(RedisClusterNode.NodeFlag.MYSELF, RedisClusterNode.NodeFlag.UPSTREAM));
+        partitions.getPartition(1)
+                .setFlags(LettuceSets.unmodifiableSet(RedisClusterNode.NodeFlag.MYSELF, RedisClusterNode.NodeFlag.UPSTREAM));
         assertThat(selection.asMap()).hasSize(2);
 
         clusterClient.reloadPartitions();
@@ -185,8 +171,8 @@ class NodeSelectionAsyncIntegrationTests extends TestSupport {
     @Test
     void testNodeSelectionAsyncPing() {
 
-        AsyncNodeSelection<String, String> onlyMe = commands.nodes(redisClusterNode -> redisClusterNode.getFlags().contains(
-                RedisClusterNode.NodeFlag.MYSELF));
+        AsyncNodeSelection<String, String> onlyMe = commands
+                .nodes(redisClusterNode -> redisClusterNode.getFlags().contains(RedisClusterNode.NodeFlag.MYSELF));
         Map<RedisClusterNode, RedisAsyncCommands<String, String>> map = onlyMe.asMap();
 
         assertThat(map).hasSize(1);
@@ -230,8 +216,8 @@ class NodeSelectionAsyncIntegrationTests extends TestSupport {
     @Test
     void testStaticNodeSelection() {
 
-        AsyncNodeSelection<String, String> selection = commands.nodes(
-                redisClusterNode -> redisClusterNode.getFlags().contains(RedisClusterNode.NodeFlag.MYSELF), false);
+        AsyncNodeSelection<String, String> selection = commands
+                .nodes(redisClusterNode -> redisClusterNode.getFlags().contains(RedisClusterNode.NodeFlag.MYSELF), false);
 
         assertThat(selection.asMap()).hasSize(1);
 
@@ -244,42 +230,10 @@ class NodeSelectionAsyncIntegrationTests extends TestSupport {
     }
 
     @Test
-    void testAsynchronicityOfMultiNodeExecution() {
-
-        StatefulRedisClusterConnection<String, String> connection2 = clusterClient.connect();
-        RedisAdvancedClusterAsyncCommands<String, String> async2 = connection2.async();
-
-        AsyncNodeSelection<String, String> masters = async2.masters();
-        TestFutures.awaitOrTimeout(masters.commands().configSet("lua-time-limit", "10"));
-
-        AsyncExecutions<Object> eval = masters.commands().eval("while true do end", STATUS, new String[0]);
-
-        for (CompletableFuture<Object> future : eval.futures()) {
-            assertThat(future.isDone()).isFalse();
-            assertThat(future.isCancelled()).isFalse();
-        }
-        Delay.delay(Duration.ofMillis(200));
-
-        AsyncExecutions<String> kill = commands.masters().commands().scriptKill();
-        TestFutures.awaitOrTimeout(kill);
-
-        for (CompletionStage<String> execution : kill) {
-            assertThat(TestFutures.getOrTimeout(execution)).isEqualTo("OK");
-        }
-
-        TestFutures.awaitOrTimeout(CompletableFuture.allOf(eval.futures()).exceptionally(throwable -> null));
-        for (CompletableFuture<Object> future : eval.futures()) {
-            assertThat(future.isDone()).isTrue();
-        }
-
-        connection2.close();
-    }
-
-    @Test
     void testReplicaReadWrite() {
 
-        AsyncNodeSelection<String, String> nodes = commands.nodes(redisClusterNode -> redisClusterNode.getFlags().contains(
-                RedisClusterNode.NodeFlag.REPLICA));
+        AsyncNodeSelection<String, String> nodes = commands
+                .nodes(redisClusterNode -> redisClusterNode.getFlags().contains(RedisClusterNode.NodeFlag.REPLICA));
 
         assertThat(nodes.size()).isEqualTo(2);
 
@@ -304,8 +258,8 @@ class NodeSelectionAsyncIntegrationTests extends TestSupport {
     @Test
     void testReplicasWithReadOnly() {
 
-        AsyncNodeSelection<String, String> nodes = commands.replicas(redisClusterNode -> redisClusterNode
-                .is(RedisClusterNode.NodeFlag.REPLICA));
+        AsyncNodeSelection<String, String> nodes = commands
+                .replicas(redisClusterNode -> redisClusterNode.is(RedisClusterNode.NodeFlag.REPLICA));
 
         assertThat(nodes.size()).isEqualTo(2);
 
@@ -334,8 +288,7 @@ class NodeSelectionAsyncIntegrationTests extends TestSupport {
         waitForReplication(commands, key, port);
     }
 
-    static void waitForReplication(RedisAdvancedClusterAsyncCommands<String, String> commands, String key, int port)
- {
+    static void waitForReplication(RedisAdvancedClusterAsyncCommands<String, String> commands, String key, int port) {
 
         AsyncNodeSelection<String, String> selection = commands
                 .replicas(redisClusterNode -> redisClusterNode.getUri().getPort() == port);
@@ -352,4 +305,5 @@ class NodeSelectionAsyncIntegrationTests extends TestSupport {
             return null;
         }).waitOrTimeout();
     }
+
 }

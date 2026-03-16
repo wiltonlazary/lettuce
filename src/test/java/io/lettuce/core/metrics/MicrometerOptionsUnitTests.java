@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,20 +19,27 @@
  */
 package io.lettuce.core.metrics;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static io.lettuce.core.metrics.MicrometerOptions.*;
 import static org.assertj.core.api.Assertions.*;
 
 import java.time.Duration;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import io.lettuce.core.protocol.Command;
+import io.lettuce.core.protocol.CommandType;
 import io.micrometer.core.instrument.Tags;
 
 /**
  * Unit tests for {@link MicrometerOptions}.
  *
  * @author Steven Sheehy
+ * @author André Tibola
+ * @author Mark Paluch
  */
+@Tag(UNIT_TEST)
 class MicrometerOptionsUnitTests {
 
     @Test
@@ -94,6 +105,15 @@ class MicrometerOptionsUnitTests {
         MicrometerOptions options = MicrometerOptions.builder().targetPercentiles(percentiles).build();
 
         assertThat(options.targetPercentiles()).hasSize(3).isEqualTo(percentiles);
+    }
+
+    @Test
+    void enabledCommands() {
+        CommandType[] enabledCommands = { CommandType.HSET, CommandType.HGET, CommandType.EXPIRE };
+        MicrometerOptions options = MicrometerOptions.builder().enabledCommands(enabledCommands).build();
+
+        assertThat(options.getMetricsFilter()).accepts(new Command<>(CommandType.HSET, null))
+                .rejects(new Command<>(CommandType.SET, null));
     }
 
 }

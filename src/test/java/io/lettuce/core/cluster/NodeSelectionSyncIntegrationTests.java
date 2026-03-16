@@ -1,34 +1,23 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.cluster;
 
-import static io.lettuce.core.ScriptOutputType.STATUS;
-import static org.assertj.core.api.Assertions.assertThat;
+import static io.lettuce.TestTags.INTEGRATION_TEST;
+import static org.assertj.core.api.Assertions.*;
 import static org.assertj.core.api.Fail.fail;
 
-import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Vector;
 
 import javax.inject.Inject;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import io.lettuce.core.RedisCommandExecutionException;
-import io.lettuce.core.RedisCommandTimeoutException;
 import io.lettuce.core.TestSupport;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.cluster.api.StatefulRedisClusterConnection;
@@ -44,10 +33,12 @@ import io.lettuce.test.Wait;
 /**
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 class NodeSelectionSyncIntegrationTests extends TestSupport {
 
     private final RedisClusterClient clusterClient;
+
     private final RedisAdvancedClusterCommands<String, String> commands;
 
     @Inject
@@ -56,6 +47,10 @@ class NodeSelectionSyncIntegrationTests extends TestSupport {
 
         this.clusterClient = clusterClient;
         this.commands = connection.sync();
+        try {
+            connection.sync().scriptKill();
+        } catch (Exception e) {
+        }
         connection.sync().flushall();
     }
 
@@ -162,26 +157,6 @@ class NodeSelectionSyncIntegrationTests extends TestSupport {
     }
 
     @Test
-    void testAsynchronicityOfMultiNodeExecution() {
-
-        RedisAdvancedClusterCommands<String, String> connection2 = clusterClient.connect().sync();
-
-        connection2.setTimeout(Duration.ofSeconds(1));
-        NodeSelection<String, String> masters = connection2.masters();
-        masters.commands().configSet("lua-time-limit", "10");
-
-        Executions<Object> eval = null;
-        try {
-            eval = masters.commands().eval("while true do end", STATUS, new String[0]);
-            fail("missing exception");
-        } catch (RedisCommandTimeoutException e) {
-            assertThat(e).hasMessageContaining("Command timed out for node(s)");
-        }
-
-        commands.masters().commands().scriptKill();
-    }
-
-    @Test
     void testReplicasReadWrite() {
 
         NodeSelection<String, String> nodes = commands
@@ -243,4 +218,5 @@ class NodeSelectionSyncIntegrationTests extends TestSupport {
             return null;
         }).waitOrTimeout();
     }
+
 }

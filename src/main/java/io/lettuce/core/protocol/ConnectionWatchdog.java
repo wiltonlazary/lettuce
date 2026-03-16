@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -67,7 +71,7 @@ public class ConnectionWatchdog extends ChannelInboundHandlerAdapter {
 
     private final EventExecutorGroup reconnectWorkers;
 
-    private final ReconnectionHandler reconnectionHandler;
+    protected final ReconnectionHandler reconnectionHandler;
 
     private final ReconnectionListener reconnectionListener;
 
@@ -96,7 +100,6 @@ public class ConnectionWatchdog extends ChannelInboundHandlerAdapter {
     private volatile boolean listenOnChannelInactive;
 
     private volatile Timeout reconnectScheduleTimeout;
-
 
     /**
      * Create a new watchdog that adds to new connections to the supplied {@link ChannelGroup} and establishes a new
@@ -139,24 +142,26 @@ public class ConnectionWatchdog extends ChannelInboundHandlerAdapter {
         this.redisUri = (String) bootstrap.config().attrs().get(ConnectionBuilder.REDIS_URI);
         this.epid = endpoint.getId();
 
-        Mono<SocketAddress> wrappedSocketAddressSupplier = socketAddressSupplier.doOnNext(addr -> remoteAddress = addr)
-                .onErrorResume(t -> {
-
-                    if (logger.isDebugEnabled()) {
-                        logger.warn("Cannot retrieve current address from socketAddressSupplier: " + t.toString()
-                                + ", reusing cached address " + remoteAddress, t);
-                    } else {
-                        logger.warn("Cannot retrieve current address from socketAddressSupplier: " + t.toString()
-                                + ", reusing cached address " + remoteAddress);
-                    }
-
-                    return Mono.just(remoteAddress);
-                });
-
+        Mono<SocketAddress> wrappedSocketAddressSupplier = wrapSocketAddressSupplier(socketAddressSupplier);
         this.reconnectionHandler = new ReconnectionHandler(clientOptions, bootstrap, wrappedSocketAddressSupplier, timer,
                 reconnectWorkers, connectionFacade);
 
         resetReconnectDelay();
+    }
+
+    protected Mono<SocketAddress> wrapSocketAddressSupplier(Mono<SocketAddress> source) {
+        return source.doOnNext(addr -> remoteAddress = addr).onErrorResume(t -> {
+
+            if (logger.isDebugEnabled()) {
+                logger.warn("Cannot retrieve current address from socketAddressSupplier: " + t.toString()
+                        + ", reusing cached address " + remoteAddress, t);
+            } else {
+                logger.warn("Cannot retrieve current address from socketAddressSupplier: " + t.toString()
+                        + ", reusing cached address " + remoteAddress);
+            }
+
+            return Mono.just(remoteAddress);
+        });
     }
 
     void prepareClose() {

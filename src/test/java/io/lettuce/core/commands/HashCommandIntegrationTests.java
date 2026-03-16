@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,20 +19,10 @@
  */
 package io.lettuce.core.commands;
 
-import static org.assertj.core.api.Assertions.*;
-
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-
-import javax.inject.Inject;
-
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
-import org.junit.jupiter.api.extension.ExtendWith;
-
+import io.lettuce.core.ExpireArgs;
+import io.lettuce.core.HGetExArgs;
+import io.lettuce.core.HSetExArgs;
+import io.lettuce.core.KeyScanCursor;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.MapScanCursor;
 import io.lettuce.core.ScanArgs;
@@ -40,6 +34,30 @@ import io.lettuce.test.KeyValueStreamingAdapter;
 import io.lettuce.test.LettuceExtension;
 import io.lettuce.test.ListStreamingAdapter;
 import io.lettuce.test.condition.EnabledOnCommand;
+import io.lettuce.test.condition.RedisConditions;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
+import org.junit.jupiter.api.extension.ExtendWith;
+
+import javax.inject.Inject;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static io.lettuce.TestTags.INTEGRATION_TEST;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.offset;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * Integration tests for {@link io.lettuce.core.api.sync.RedisHashCommands}.
@@ -48,9 +66,18 @@ import io.lettuce.test.condition.EnabledOnCommand;
  * @author Mark Paluch
  * @author Hodur Heidarsson
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class HashCommandIntegrationTests extends TestSupport {
+
+    public static final String MY_KEY = "hKey";
+
+    public static final String MY_FIELD = "hField";
+
+    public static final String MY_SECOND_FIELD = "hSecondField";
+
+    public static final String MY_VALUE = "hValue";
 
     private final RedisCommands<String, String> redis;
 
@@ -204,6 +231,96 @@ public class HashCommandIntegrationTests extends TestSupport {
     }
 
     @Test
+    @EnabledOnCommand("HGETDEL")
+    void hgetdel() {
+        setup();
+        List<KeyValue<String, String>> values = redis.hgetdel(key, "one", "two", "missing");
+        assertThat(values).hasSize(3);
+        assertThat(values.containsAll(list(kv("one", "1"), kv("two", "2"), kv("missing", null)))).isTrue();
+        assertThat(redis.hexists(key, "one")).isFalse();
+        assertThat(redis.hexists(key, "two")).isFalse();
+    }
+
+    @Test
+    @EnabledOnCommand("HGETDEL")
+    void hgetdelStreaming() {
+        setup();
+
+        KeyValueStreamingAdapter<String, String> streamingAdapter = new KeyValueStreamingAdapter<>();
+        Long count = redis.hgetdel(streamingAdapter, key, "one", "two", "missing");
+        Map<String, String> values = streamingAdapter.getMap();
+        assertThat(count).isEqualTo(3);
+        assertThat(values).hasSize(3);
+        assertThat(values).containsEntry("one", "1").containsEntry("two", "2").containsEntry("missing", null);
+        assertThat(redis.hexists(key, "one")).isFalse();
+        assertThat(redis.hexists(key, "two")).isFalse();
+    }
+
+    @Test
+    @EnabledOnCommand("HGETEX")
+    void hgetex() {
+        setup();
+        List<KeyValue<String, String>> values = redis.hgetex(key, "one", "two", "missing");
+        assertThat(values).hasSize(3);
+        assertThat(values.containsAll(list(kv("one", "1"), kv("two", "2"), kv("missing", null)))).isTrue();
+    }
+
+    @Test
+    @EnabledOnCommand("HGETEX")
+    void hgetexWithArgs() {
+        setup();
+        List<KeyValue<String, String>> values = redis.hgetex(key, HGetExArgs.Builder.ex(Duration.ofSeconds(100)), "one", "two",
+                "missing");
+        assertThat(values).hasSize(3);
+        assertThat(values.containsAll(list(kv("one", "1"), kv("two", "2"), kv("missing", null)))).isTrue();
+        assertThat(redis.httl(key, "one", "two")).allMatch(ttl -> ttl > 1);
+    }
+
+    @Test
+    @EnabledOnCommand("HGETEX")
+    void hgetexStreaming() {
+        setup();
+
+        KeyValueStreamingAdapter<String, String> streamingAdapter = new KeyValueStreamingAdapter<>();
+        Long count = redis.hgetex(streamingAdapter, key, HGetExArgs.Builder.ex(Duration.ofSeconds(100)), "one", "two",
+                "missing");
+        Map<String, String> values = streamingAdapter.getMap();
+        assertThat(count).isEqualTo(3);
+        assertThat(values).hasSize(3);
+        assertThat(values).containsEntry("one", "1").containsEntry("two", "2").containsEntry("missing", null);
+        assertThat(redis.httl(key, "one", "two")).allMatch(ttl -> ttl > 1);
+    }
+
+    @Test
+    @EnabledOnCommand("HSETEX")
+    void hsetex() {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("one", "1");
+        fields.put("two", "2");
+
+        Long result = redis.hsetex(key, fields);
+        assertThat(result).isEqualTo(1);
+
+        List<KeyValue<String, String>> values = redis.hmget(key, "one", "two", "missing");
+        assertThat(values.containsAll(list(kv("one", "1"), kv("two", "2")))).isTrue();
+    }
+
+    @Test
+    @EnabledOnCommand("HSETEX")
+    void hsetexWithArgs() {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put("one", "1");
+        fields.put("two", "2");
+
+        Long result = redis.hsetex(key, HSetExArgs.Builder.ex(Duration.ofSeconds(100)), fields);
+        assertThat(result).isEqualTo(1);
+
+        List<KeyValue<String, String>> values = redis.hmget(key, "one", "two");
+        assertThat(values.containsAll(list(kv("one", "1"), kv("two", "2")))).isTrue();
+        assertThat(redis.httl(key, "one", "two")).allMatch(ttl -> ttl > 1);
+    }
+
+    @Test
     void hmset() {
         Map<String, String> hash = new LinkedHashMap<>();
         hash.put("one", "1");
@@ -241,6 +358,19 @@ public class HashCommandIntegrationTests extends TestSupport {
                 KeyValue.fromNullable("three", "3"));
         assertThat(redis.hrandfieldWithvalues(key, 2)).hasSize(2).containsAnyOf(KeyValue.fromNullable("one", "1"),
                 KeyValue.fromNullable("two", "2"), KeyValue.fromNullable("three", "3"));
+    }
+
+    @Test
+    @EnabledOnCommand("HRANDFIELD")
+    void hrandfieldIssue3122() {
+
+        Map<String, String> hash = new LinkedHashMap<>();
+        hash.put("one", "1");
+        hash.put("two", "2");
+
+        redis.hset(key, hash);
+        assertThat(redis.hrandfieldWithvalues(key)).isIn(KeyValue.fromNullable("one", "1"), KeyValue.fromNullable("two", "2"),
+                KeyValue.fromNullable("three", "3"));
     }
 
     @Test
@@ -303,6 +433,19 @@ public class HashCommandIntegrationTests extends TestSupport {
     }
 
     @Test
+    void hscanNovalues() {
+        // NOVALUES flag (since Redis 7.4)
+        assumeTrue(RedisConditions.of(redis).hasVersionGreaterOrEqualsTo("7.4"));
+
+        redis.hset(key, key, value);
+        KeyScanCursor<String> cursor = redis.hscanNovalues(key);
+
+        assertThat(cursor.getCursor()).isEqualTo("0");
+        assertThat(cursor.isFinished()).isTrue();
+        assertThat(cursor.getKeys()).containsExactly(key);
+    }
+
+    @Test
     void hscanWithCursor() {
         redis.hset(key, key, value);
 
@@ -314,6 +457,20 @@ public class HashCommandIntegrationTests extends TestSupport {
     }
 
     @Test
+    void hscanNoValuesWithCursor() {
+        // NOVALUES flag (since Redis 7.4)
+        assumeTrue(RedisConditions.of(redis).hasVersionGreaterOrEqualsTo("7.4"));
+
+        redis.hset(key, key, value);
+
+        KeyScanCursor<String> cursor = redis.hscanNovalues(key, ScanCursor.INITIAL);
+
+        assertThat(cursor.getCursor()).isEqualTo("0");
+        assertThat(cursor.isFinished()).isTrue();
+        assertThat(cursor.getKeys()).containsExactly(key);
+    }
+
+    @Test
     void hscanWithCursorAndArgs() {
         redis.hset(key, key, value);
 
@@ -322,6 +479,20 @@ public class HashCommandIntegrationTests extends TestSupport {
         assertThat(cursor.getCursor()).isEqualTo("0");
         assertThat(cursor.isFinished()).isTrue();
         assertThat(cursor.getMap()).isEqualTo(Collections.singletonMap(key, value));
+    }
+
+    @Test
+    void hscanNoValuesWithCursorAndArgs() {
+        // NOVALUES flag (since Redis 7.4)
+        assumeTrue(RedisConditions.of(redis).hasVersionGreaterOrEqualsTo("7.4"));
+
+        redis.hset(key, key, value);
+
+        KeyScanCursor<String> cursor = redis.hscanNovalues(key, ScanCursor.INITIAL, ScanArgs.Builder.limit(2));
+
+        assertThat(cursor.getCursor()).isEqualTo("0");
+        assertThat(cursor.isFinished()).isTrue();
+        assertThat(cursor.getKeys()).containsExactly(key);
     }
 
     @Test
@@ -338,6 +509,22 @@ public class HashCommandIntegrationTests extends TestSupport {
     }
 
     @Test
+    void hscanNoValuesStreaming() {
+        // NOVALUES flag (since Redis 7.4)
+        assumeTrue(RedisConditions.of(redis).hasVersionGreaterOrEqualsTo("7.4"));
+
+        redis.hset(key, key, value);
+        ListStreamingAdapter<String> adapter = new ListStreamingAdapter<>();
+
+        StreamScanCursor cursor = redis.hscanNovalues(adapter, key, ScanArgs.Builder.limit(100).match("*"));
+
+        assertThat(cursor.getCount()).isEqualTo(1);
+        assertThat(cursor.getCursor()).isEqualTo("0");
+        assertThat(cursor.isFinished()).isTrue();
+        assertThat(adapter.getList()).containsExactly(key);
+    }
+
+    @Test
     void hscanStreamingWithCursor() {
         redis.hset(key, key, value);
         KeyValueStreamingAdapter<String, String> adapter = new KeyValueStreamingAdapter<>();
@@ -347,6 +534,22 @@ public class HashCommandIntegrationTests extends TestSupport {
         assertThat(cursor.getCount()).isEqualTo(1);
         assertThat(cursor.getCursor()).isEqualTo("0");
         assertThat(cursor.isFinished()).isTrue();
+    }
+
+    @Test
+    void hscanNoValuesStreamingWithCursor() {
+        // NOVALUES flag (since Redis 7.4)
+        assumeTrue(RedisConditions.of(redis).hasVersionGreaterOrEqualsTo("7.4"));
+
+        redis.hset(key, key, value);
+        ListStreamingAdapter<String> adapter = new ListStreamingAdapter<>();
+
+        StreamScanCursor cursor = redis.hscanNovalues(adapter, key, ScanCursor.INITIAL);
+
+        assertThat(cursor.getCount()).isEqualTo(1);
+        assertThat(cursor.getCursor()).isEqualTo("0");
+        assertThat(cursor.isFinished()).isTrue();
+        assertThat(adapter.getList()).containsExactly(key);
     }
 
     @Test
@@ -362,6 +565,22 @@ public class HashCommandIntegrationTests extends TestSupport {
     }
 
     @Test
+    void hscanNoValuesStreamingWithCursorAndArgs() {
+        // NOVALUES flag (since Redis 7.4)
+        assumeTrue(RedisConditions.of(redis).hasVersionGreaterOrEqualsTo("7.4"));
+
+        redis.hset(key, key, value);
+        ListStreamingAdapter<String> adapter = new ListStreamingAdapter<>();
+
+        StreamScanCursor cursor = redis.hscanNovalues(adapter, key, ScanCursor.INITIAL, ScanArgs.Builder.limit(100).match("*"));
+
+        assertThat(cursor.getCount()).isEqualTo(1);
+        assertThat(cursor.getCursor()).isEqualTo("0");
+        assertThat(cursor.isFinished()).isTrue();
+        assertThat(adapter.getList()).containsExactly(key);
+    }
+
+    @Test
     void hscanStreamingWithArgs() {
         redis.hset(key, key, value);
         KeyValueStreamingAdapter<String, String> adapter = new KeyValueStreamingAdapter<>();
@@ -371,6 +590,22 @@ public class HashCommandIntegrationTests extends TestSupport {
         assertThat(cursor.getCount()).isEqualTo(1);
         assertThat(cursor.getCursor()).isEqualTo("0");
         assertThat(cursor.isFinished()).isTrue();
+    }
+
+    @Test
+    void hscanNoValuesStreamingWithArgs() {
+        // NOVALUES flag (since Redis 7.4)
+        assumeTrue(RedisConditions.of(redis).hasVersionGreaterOrEqualsTo("7.4"));
+
+        redis.hset(key, key, value);
+        ListStreamingAdapter<String> adapter = new ListStreamingAdapter<>();
+
+        StreamScanCursor cursor = redis.hscanNovalues(adapter, key);
+
+        assertThat(cursor.getCount()).isEqualTo(1);
+        assertThat(cursor.getCursor()).isEqualTo("0");
+        assertThat(cursor.isFinished()).isTrue();
+        assertThat(adapter.getList()).containsExactly(key);
     }
 
     @Test
@@ -399,6 +634,32 @@ public class HashCommandIntegrationTests extends TestSupport {
     }
 
     @Test
+    void hscanNoValuesMultiple() {
+        // NOVALUES flag (since Redis 7.4)
+        assumeTrue(RedisConditions.of(redis).hasVersionGreaterOrEqualsTo("7.4"));
+
+        Map<String, String> expect = new LinkedHashMap<>();
+        setup100KeyValues(expect);
+
+        KeyScanCursor<String> cursor = redis.hscanNovalues(key, ScanArgs.Builder.limit(5));
+
+        assertThat(cursor.getCursor()).isNotNull();
+        assertThat(cursor.getKeys()).hasSize(100);
+
+        assertThat(cursor.getCursor()).isEqualTo("0");
+        assertThat(cursor.isFinished()).isTrue();
+
+        Set<String> check = new HashSet<>(cursor.getKeys());
+
+        while (!cursor.isFinished()) {
+            cursor = redis.hscanNovalues(key, cursor);
+            check.addAll(cursor.getKeys());
+        }
+
+        assertThat(check).isEqualTo(expect.keySet());
+    }
+
+    @Test
     void hscanMatch() {
 
         Map<String, String> expect = new LinkedHashMap<>();
@@ -412,6 +673,93 @@ public class HashCommandIntegrationTests extends TestSupport {
         assertThat(cursor.getMap()).hasSize(11);
     }
 
+    @Test
+    void hscanNoValuesMatch() {
+        // NOVALUES flag (since Redis 7.4)
+        assumeTrue(RedisConditions.of(redis).hasVersionGreaterOrEqualsTo("7.4"));
+
+        Map<String, String> expect = new LinkedHashMap<>();
+        setup100KeyValues(expect);
+
+        KeyScanCursor<String> cursor = redis.hscanNovalues(key, ScanArgs.Builder.limit(100).match("key1*"));
+
+        assertThat(cursor.getCursor()).isEqualTo("0");
+        assertThat(cursor.isFinished()).isTrue();
+
+        assertThat(cursor.getKeys()).hasSize(11);
+    }
+
+    @Test
+    @EnabledOnCommand("HEXPIRE")
+    void hexpire() {
+        assertThat(redis.hset(MY_KEY, MY_FIELD, MY_VALUE)).isTrue();
+        assertThat(redis.hexpire(MY_KEY, 0, MY_FIELD)).containsExactly(2L);
+        assertThat(redis.hset(MY_KEY, MY_FIELD, MY_VALUE)).isTrue();
+        assertThat(redis.hexpire(MY_KEY, 1, MY_FIELD, MY_SECOND_FIELD)).containsExactly(1L, -2L);
+        assertThat(redis.hexpire("invalidKey", 1, MY_FIELD)).containsExactly(-2L);
+        await().until(() -> redis.hget(MY_KEY, MY_FIELD) == null);
+    }
+
+    @Test
+    @EnabledOnCommand("HEXPIRE")
+    void hexpireExpireArgs() {
+        assertThat(redis.hset(MY_KEY, MY_FIELD, MY_VALUE)).isTrue();
+        assertThat(redis.hexpire(MY_KEY, Duration.ofSeconds(1), ExpireArgs.Builder.nx(), MY_FIELD)).containsExactly(1L);
+        assertThat(redis.hexpire(MY_KEY, Duration.ofSeconds(1), ExpireArgs.Builder.xx(), MY_FIELD)).containsExactly(1L);
+        assertThat(redis.hexpire(MY_KEY, Duration.ofSeconds(10), ExpireArgs.Builder.gt(), MY_FIELD)).containsExactly(1L);
+        assertThat(redis.hexpire(MY_KEY, Duration.ofSeconds(1), ExpireArgs.Builder.lt(), MY_FIELD)).containsExactly(1L);
+        await().until(() -> redis.hget(MY_KEY, MY_FIELD) == null);
+    }
+
+    @Test
+    @EnabledOnCommand("HEXPIREAT")
+    void hexpireat() {
+        assertThat(redis.hset(MY_KEY, MY_FIELD, MY_VALUE)).isTrue();
+        assertThat(redis.hexpireat(MY_KEY, Instant.now().minusSeconds(1), MY_FIELD)).containsExactly(2L);
+        assertThat(redis.hset(MY_KEY, MY_FIELD, MY_VALUE)).isTrue();
+        assertThat(redis.hexpireat(MY_KEY, Instant.now().plusSeconds(1), MY_FIELD)).containsExactly(1L);
+        assertThat(redis.hexpireat("invalidKey", Instant.now().plusSeconds(1), MY_FIELD)).containsExactly(-2L);
+        await().until(() -> redis.hget(MY_KEY, MY_FIELD) == null);
+    }
+
+    @Test
+    @EnabledOnCommand("HEXPIRETIME")
+    void hexpiretime() {
+        Map<String, String> fields = new LinkedHashMap<>();
+        fields.put(MY_FIELD, MY_VALUE);
+        fields.put(MY_SECOND_FIELD, MY_VALUE);
+
+        Date expiration = new Date(System.currentTimeMillis() + 1000 * 5);
+        Date secondExpiration = new Date(System.currentTimeMillis() + 1000 * 10);
+        assertThat(redis.hset(MY_KEY, fields)).isEqualTo(2);
+        assertThat(redis.hexpireat(MY_KEY, expiration, MY_FIELD)).containsExactly(1L);
+        assertThat(redis.hexpireat(MY_KEY, secondExpiration, MY_SECOND_FIELD)).containsExactly(1L);
+
+        assertThat(redis.hexpiretime(MY_KEY, MY_FIELD, MY_SECOND_FIELD)).containsExactly(expiration.getTime() / 1000,
+                secondExpiration.getTime() / 1000);
+    }
+
+    @Test
+    @EnabledOnCommand("HPERSIST")
+    void hpersist() {
+        assertThat(redis.hpersist(MY_KEY, MY_FIELD)).containsExactly(-2L);
+        assertThat(redis.hset(MY_KEY, MY_FIELD, MY_VALUE)).isTrue();
+        assertThat(redis.hpersist(MY_KEY, MY_FIELD)).containsExactly(-1L);
+
+        assertThat(redis.hexpire(MY_KEY, 1, MY_FIELD)).containsExactly(1L);
+
+        assertThat(redis.hpersist(MY_KEY, MY_FIELD)).containsExactly(1L);
+    }
+
+    @Test
+    @EnabledOnCommand("HTTL")
+    void httl() {
+        assertThat(redis.hset(MY_KEY, MY_FIELD, MY_VALUE)).isTrue();
+        assertThat(redis.hset(MY_KEY, MY_SECOND_FIELD, MY_VALUE)).isTrue();
+        assertThat(redis.hexpire(MY_KEY, 60, MY_FIELD)).containsExactly(1L);
+        assertThat(redis.httl(MY_KEY, MY_FIELD, MY_SECOND_FIELD)).containsExactly(60L, -1L);
+    }
+
     void setup100KeyValues(Map<String, String> expect) {
         for (int i = 0; i < 100; i++) {
             expect.put(key + i, value + 1);
@@ -419,4 +767,5 @@ public class HashCommandIntegrationTests extends TestSupport {
 
         redis.hmset(key, expect);
     }
+
 }

@@ -1,20 +1,6 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.dynamic;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.Mockito.doThrow;
@@ -24,6 +10,7 @@ import javax.inject.Inject;
 
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mockito;
@@ -45,10 +32,12 @@ import io.lettuce.test.settings.TestSettings;
 /**
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 class RedisCommandsIntegrationTests extends TestSupport {
 
     private final RedisClient client;
+
     private final RedisCommands<String, String> redis;
 
     @Inject
@@ -110,8 +99,30 @@ class RedisCommandsIntegrationTests extends TestSupport {
     @Test
     void shouldWorkWithPooledConnection() throws Exception {
 
-        GenericObjectPool<StatefulRedisConnection<String, String>> pool = ConnectionPoolSupport.createGenericObjectPool(
-                client::connect, new GenericObjectPoolConfig<>());
+        GenericObjectPool<StatefulRedisConnection<String, String>> pool = ConnectionPoolSupport
+                .createGenericObjectPool(client::connect, new GenericObjectPoolConfig<>());
+
+        try (StatefulRedisConnection<String, String> connection = pool.borrowObject()) {
+
+            RedisCommandFactory factory = new RedisCommandFactory(connection);
+            SimpleCommands commands = factory.getCommands(SimpleCommands.class);
+            commands.get("foo");
+        }
+
+        pool.close();
+    }
+
+    @Test
+    void shouldWorkWithPooledConnectionAndCustomValidation() throws Exception {
+
+        GenericObjectPool<StatefulRedisConnection<String, String>> pool = ConnectionPoolSupport
+                .createGenericObjectPool(client::connect, new GenericObjectPoolConfig<>(), connection -> {
+                    try {
+                        return "PONG".equals(connection.sync().ping());
+                    } catch (Exception e) {
+                        return false;
+                    }
+                });
 
         try (StatefulRedisConnection<String, String> connection = pool.borrowObject()) {
 
@@ -141,14 +152,21 @@ class RedisCommandsIntegrationTests extends TestSupport {
     }
 
     private interface SimpleCommands extends Commands {
+
         String get(String key);
+
     }
 
     private interface TooFewParameters extends Commands {
+
         String get();
+
     }
 
     private interface WithTypo extends Commands {
+
         String gat(String key);
+
     }
+
 }

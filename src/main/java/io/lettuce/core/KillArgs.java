@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -23,8 +27,8 @@ import io.lettuce.core.protocol.CommandType;
 
 /**
  *
- * Argument list builder for the Redis <a href="https://redis.io/commands/client-kill">CLIENT KILL</a> command. Static import the
- * methods from {@link Builder} and chain the method calls: {@code id(1).skipme()}.
+ * Argument list builder for the Redis <a href="https://redis.io/commands/client-kill">CLIENT KILL</a> command. Static import
+ * the methods from {@link Builder} and chain the method calls: {@code id(1).skipme()}.
  * <p>
  * {@link KillArgs} is a mutable object and instances should be used only once to avoid shared mutable state.
  *
@@ -49,6 +53,8 @@ public class KillArgs implements CompositeArgument {
     private Type type;
 
     private String username;
+
+    private Long maxAge;
 
     /**
      * Builder entry points for {@link KillArgs}.
@@ -155,6 +161,18 @@ public class KillArgs implements CompositeArgument {
         public static KillArgs user(String username) {
             return new KillArgs().user(username);
         }
+
+        /**
+         * Creates new {@link KillArgs} setting {@literal MAXAGE}.
+         *
+         * @return new {@link KillArgs} with {@literal MAXAGE} set.
+         * @see KillArgs#maxAge(Long)
+         * @since 6.4
+         */
+        public static KillArgs maxAge(Long maxAge) {
+            return new KillArgs().maxAge(maxAge);
+        }
+
     }
 
     /**
@@ -237,6 +255,21 @@ public class KillArgs implements CompositeArgument {
     }
 
     /**
+     * Closes all the connections that are older than the specified age, in seconds.
+     *
+     * @param maxAge must not be {@code null}.
+     * @return {@code this} {@link KillArgs}.
+     * @since 6.4
+     */
+    public KillArgs maxAge(Long maxAge) {
+
+        LettuceAssert.notNull(maxAge, "MaxAge must not be null");
+
+        this.maxAge = maxAge;
+        return this;
+    }
+
+    /**
      * Closes all the connections that are authenticated with the specified ACL {@code username}.
      *
      * @param username must not be {@code null}.
@@ -276,6 +309,10 @@ public class KillArgs implements CompositeArgument {
 
         if (username != null) {
             args.add("USER").add(username);
+        }
+
+        if (maxAge != null) {
+            args.add("MAXAGE").add(maxAge);
         }
     }
 

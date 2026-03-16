@@ -1,7 +1,11 @@
 /*
- * Copyright 2017-2022 the original author or authors.
+ * Copyright 2017-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -21,6 +25,7 @@ import java.util.Date;
 import java.util.List;
 
 import io.lettuce.core.*;
+import io.lettuce.core.annotations.Experimental;
 import io.lettuce.core.output.KeyStreamingChannel;
 import io.lettuce.core.output.ValueStreamingChannel;
 
@@ -65,6 +70,29 @@ public interface RedisKeyAsyncCommands<K, V> {
     RedisFuture<Long> del(K... keys);
 
     /**
+     * Delete the specified key if the compare condition matches.
+     *
+     * @param key the key.
+     * @param compareCondition the compare condition, must not be {@code null}.
+     * @return Long integer-reply the number of keys that were removed.
+     *
+     * @since 7.1
+     */
+    @Experimental
+    RedisFuture<Long> delex(K key, CompareCondition<V> compareCondition);
+
+    /**
+     * Return the XXH3 64-bit digest of the string value stored at a key as a 16-character hex string.
+     *
+     * @param key the key.
+     * @return String bulk-string-reply the hex digest of the key's value, or {@code null} when {@code key} does not exist.
+     *
+     * @since 7.1
+     */
+    @Experimental
+    RedisFuture<String> digestKey(K key);
+
+    /**
      * Unlink one or more keys (non blocking DEL).
      *
      * @param keys the keys.
@@ -103,7 +131,7 @@ public interface RedisKeyAsyncCommands<K, V> {
      *
      * @param key the key.
      * @param seconds the seconds type: long.
-     * @param expireArgs the expire arguments.
+     * @param expireArgs the expiry arguments.
      * @return Boolean integer-reply specifically: {@code true} if the timeout was set. {@code false} if {@code key} does not
      *         exist or the timeout could not be set.
      * @since 6.2
@@ -126,7 +154,7 @@ public interface RedisKeyAsyncCommands<K, V> {
      *
      * @param key the key.
      * @param seconds the seconds.
-     * @param expireArgs the expire arguments.
+     * @param expireArgs the expiry arguments.
      * @return Boolean integer-reply specifically: {@code true} if the timeout was set. {@code false} if {@code key} does not
      *         exist or the timeout could not be set.
      * @since 6.2
@@ -148,7 +176,7 @@ public interface RedisKeyAsyncCommands<K, V> {
      *
      * @param key the key.
      * @param timestamp the timestamp type: posix time.
-     * @param expireArgs the expire arguments.
+     * @param expireArgs the expiry arguments.
      * @return Boolean integer-reply specifically: {@code true} if the timeout was set. {@code false} if {@code key} does not
      *         exist or the timeout could not be set (see: {@code EXPIRE}).
      * @since 6.2
@@ -170,7 +198,7 @@ public interface RedisKeyAsyncCommands<K, V> {
      *
      * @param key the key.
      * @param timestamp the timestamp type: posix time.
-     * @param expireArgs the expire arguments.
+     * @param expireArgs the expiry arguments.
      * @return Boolean integer-reply specifically: {@code true} if the timeout was set. {@code false} if {@code key} does not
      *         exist or the timeout could not be set (see: {@code EXPIRE}).
      * @since 6.2
@@ -193,7 +221,7 @@ public interface RedisKeyAsyncCommands<K, V> {
      *
      * @param key the key.
      * @param timestamp the timestamp type: posix time.
-     * @param expireArgs the expire arguments.
+     * @param expireArgs the expiry arguments.
      * @return Boolean integer-reply specifically: {@code true} if the timeout was set. {@code false} if {@code key} does not
      *         exist or the timeout could not be set (see: {@code EXPIRE}).
      * @since 6.2
@@ -213,19 +241,41 @@ public interface RedisKeyAsyncCommands<K, V> {
     /**
      * Find all keys matching the given pattern.
      *
-     * @param pattern the pattern type: patternkey (pattern).
+     * @param pattern the pattern type.
      * @return List&lt;K&gt; array-reply list of keys matching {@code pattern}.
      */
-    RedisFuture<List<K>> keys(K pattern);
+    RedisFuture<List<K>> keys(String pattern);
+
+    /**
+     * Find all keys matching the given pattern (legacy overload).
+     *
+     * @param pattern the pattern type: patternkey (pattern).
+     * @return List&lt;K&gt; array-reply list of keys matching {@code pattern}.
+     * @deprecated Use {@link #keys(String)} instead. This legacy overload will be removed in a later version.
+     */
+    @Deprecated
+    RedisFuture<List<K>> keysLegacy(K pattern);
 
     /**
      * Find all keys matching the given pattern.
      *
      * @param channel the channel.
-     * @param pattern the pattern.
+     * @param pattern the pattern type.
      * @return Long array-reply list of keys matching {@code pattern}.
      */
-    RedisFuture<Long> keys(KeyStreamingChannel<K> channel, K pattern);
+    RedisFuture<Long> keys(KeyStreamingChannel<K> channel, String pattern);
+
+    /**
+     * Find all keys matching the given pattern (legacy overload).
+     *
+     * @param channel the channel.
+     * @param pattern the pattern.
+     * @return Long array-reply list of keys matching {@code pattern}.
+     * @deprecated Use {@link #keys(KeyStreamingChannel, String)} instead. This legacy overload will be removed in a later
+     *             version.
+     */
+    @Deprecated
+    RedisFuture<Long> keysLegacy(KeyStreamingChannel<K> channel, K pattern);
 
     /**
      * Atomically transfer a key from a Redis instance to another one.
@@ -320,7 +370,7 @@ public interface RedisKeyAsyncCommands<K, V> {
      *
      * @param key the key.
      * @param milliseconds the milliseconds type: long.
-     * @param expireArgs the expire arguments.
+     * @param expireArgs the expiry arguments.
      * @return integer-reply, specifically: {@code true} if the timeout was set. {@code false} if {@code key} does not exist or
      *         the timeout could not be set.
      * @since 6.2
@@ -343,7 +393,7 @@ public interface RedisKeyAsyncCommands<K, V> {
      *
      * @param key the key.
      * @param milliseconds the milliseconds.
-     * @param expireArgs the expire arguments.
+     * @param expireArgs the expiry arguments.
      * @return integer-reply, specifically: {@code true} if the timeout was set. {@code false} if {@code key} does not exist or
      *         the timeout could not be set.
      * @since 6.2
@@ -365,7 +415,7 @@ public interface RedisKeyAsyncCommands<K, V> {
      *
      * @param key the key.
      * @param timestamp the milliseconds-timestamp type: posix time.
-     * @param expireArgs the expire arguments.
+     * @param expireArgs the expiry arguments.
      * @return Boolean integer-reply specifically: {@code true} if the timeout was set. {@code false} if {@code key} does not
      *         exist or the timeout could not be set (see: {@code EXPIRE}).
      * @since 6.2
@@ -387,7 +437,7 @@ public interface RedisKeyAsyncCommands<K, V> {
      *
      * @param key the key.
      * @param timestamp the milliseconds-timestamp type: posix time.
-     * @param expireArgs the expire arguments.
+     * @param expireArgs the expiry arguments.
      * @return Boolean integer-reply specifically: {@code true} if the timeout was set. {@code false} if {@code key} does not
      *         exist or the timeout could not be set (see: {@code EXPIRE}).
      * @since 6.2
@@ -409,7 +459,7 @@ public interface RedisKeyAsyncCommands<K, V> {
      *
      * @param key the key.
      * @param timestamp the milliseconds-timestamp type: posix time.
-     * @param expireArgs the expire arguments.
+     * @param expireArgs the expiry arguments.
      * @return Boolean integer-reply specifically: {@code true} if the timeout was set. {@code false} if {@code key} does not
      *         exist or the timeout could not be set (see: {@code EXPIRE}).
      * @since 6.2

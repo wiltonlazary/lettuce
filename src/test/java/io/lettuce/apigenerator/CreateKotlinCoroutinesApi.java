@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.apigenerator;
 
+import static io.lettuce.TestTags.API_GENERATOR;
 import static io.lettuce.apigenerator.Constants.KOTLIN_SOURCES;
 import static io.lettuce.apigenerator.Constants.TEMPLATES;
 
@@ -24,6 +29,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -40,10 +46,7 @@ public class CreateKotlinCoroutinesApi {
      * @return
      */
     Supplier<List<String>> importSupplier() {
-        return () -> Arrays.asList(
-                "io.lettuce.core.ExperimentalLettuceCoroutinesApi",
-                "kotlinx.coroutines.flow.Flow"
-        );
+        return () -> Arrays.asList("io.lettuce.core.ExperimentalLettuceCoroutinesApi", "kotlinx.coroutines.flow.Flow");
     }
 
     /**
@@ -52,15 +55,13 @@ public class CreateKotlinCoroutinesApi {
      * @return
      */
     Function<String, String> commentInjector() {
-        return s -> s
-                .replaceAll("\\$\\{intent}", "Coroutine executed commands")
-                .replaceAll("\\$\\{author}", "Mikhael Sokolov")
-                .replaceAll("\\$\\{since}", "6.0")
-                .replaceAll("\\$\\{generator}", getClass().getName());
+        return s -> s.replaceAll("\\$\\{intent}", "Coroutine executed commands").replaceAll("\\$\\{author}", "Mikhael Sokolov")
+                .replaceAll("\\$\\{since}", "6.0").replaceAll("\\$\\{generator}", getClass().getName());
     }
 
     @ParameterizedTest
     @MethodSource("arguments")
+    @Tag(API_GENERATOR)
     void createInterface(String argument) throws Exception {
         createFactory(argument).create();
     }
@@ -80,7 +81,8 @@ public class CreateKotlinCoroutinesApi {
             targetPackage = "io.lettuce.core.api.coroutines";
         }
 
-        return new KotlinCompilationUnitFactory(templateFile, KOTLIN_SOURCES, targetPackage,
-                targetName, importSupplier(), commentInjector());
+        return new KotlinCompilationUnitFactory(templateFile, KOTLIN_SOURCES, targetPackage, targetName, importSupplier(),
+                commentInjector());
     }
+
 }

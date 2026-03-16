@@ -1,7 +1,11 @@
 /*
- * Copyright 2021-2022 the original author or authors.
+ * Copyright 2021-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -44,7 +48,11 @@ public class ClaimedMessagesOutput<K, V> extends CommandOutput<K, V, ClaimedMess
 
     private String id;
 
+    private boolean hasId;
+
     private K key;
+
+    private boolean hasKey;
 
     private Map<K, V> body;
 
@@ -62,12 +70,12 @@ public class ClaimedMessagesOutput<K, V> extends CommandOutput<K, V, ClaimedMess
     @Override
     public void set(ByteBuffer bytes) {
         if (startId == null) {
-            startId = decodeAscii(bytes);
+            startId = decodeString(bytes);
             return;
         }
 
         if (id == null) {
-            id = decodeAscii(bytes);
+            id = decodeString(bytes);
             return;
         }
 
@@ -75,8 +83,9 @@ public class ClaimedMessagesOutput<K, V> extends CommandOutput<K, V, ClaimedMess
             return;
         }
 
-        if (key == null) {
+        if (!hasKey) {
             bodyReceived = true;
+            hasKey = true;
 
             if (bytes == null) {
                 return;
@@ -92,6 +101,7 @@ public class ClaimedMessagesOutput<K, V> extends CommandOutput<K, V, ClaimedMess
 
         body.put(key, bytes == null ? null : codec.decodeValue(bytes));
         key = null;
+        hasKey = false;
     }
 
     @Override
@@ -101,15 +111,19 @@ public class ClaimedMessagesOutput<K, V> extends CommandOutput<K, V, ClaimedMess
             messages.add(new StreamMessage<>(stream, id, body == null ? Collections.emptyMap() : body));
             bodyReceived = false;
             key = null;
+            hasKey = false;
             body = null;
             id = null;
+            hasId = false;
         }
 
         if (depth == 2 && justId) {
             messages.add(new StreamMessage<>(stream, id, null));
             key = null;
+            hasKey = false;
             body = null;
             id = null;
+            hasId = false;
         }
 
         if (depth == 0) {

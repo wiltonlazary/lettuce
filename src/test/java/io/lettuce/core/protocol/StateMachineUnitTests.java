@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core.protocol;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static io.lettuce.core.protocol.RedisStateMachine.State;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -42,9 +47,13 @@ import io.netty.buffer.Unpooled;
  * @author Will Glozer
  * @author Mark Paluch
  */
+@Tag(UNIT_TEST)
 class StateMachineUnitTests {
+
     private RedisCodec<String, String> codec = StringCodec.UTF8;
+
     private CommandOutput<String, String, String> output;
+
     private RedisStateMachine rsm;
 
     @BeforeAll
@@ -67,7 +76,7 @@ class StateMachineUnitTests {
     @BeforeEach
     final void createStateMachine() {
         output = new StatusOutput<>(codec);
-        rsm = new RedisStateMachine(ByteBufAllocator.DEFAULT);
+        rsm = new RedisStateMachine();
     }
 
     @AfterEach
@@ -185,4 +194,5 @@ class StateMachineUnitTests {
     ByteBuf buffer(String content) {
         return Unpooled.copiedBuffer(content, StandardCharsets.UTF_8);
     }
+
 }

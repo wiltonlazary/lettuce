@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -335,19 +339,19 @@ public class DefaultCommandLatencyCollector implements CommandLatencyCollector {
         }
 
         @Override
-        protected synchronized void notifyListeners(long pauseLengthNsec, long pauseEndTimeNsec) {
+        protected void notifyListeners(long pauseLengthNsec, long pauseEndTimeNsec) {
         }
 
         @Override
-        public synchronized void addListener(PauseDetectorListener listener) {
+        public void addListener(PauseDetectorListener listener) {
         }
 
         @Override
-        public synchronized void addListener(PauseDetectorListener listener, boolean isHighPriority) {
+        public void addListener(PauseDetectorListener listener, boolean isHighPriority) {
         }
 
         @Override
-        public synchronized void removeListener(PauseDetectorListener listener) {
+        public void removeListener(PauseDetectorListener listener) {
         }
 
         @Override
@@ -357,29 +361,33 @@ public class DefaultCommandLatencyCollector implements CommandLatencyCollector {
     }
 
     /**
+     * No-op implementation of {@link PauseDetectorWrapper}.
+     */
+    enum NoOpPauseDetectorWrapper implements PauseDetectorWrapper {
+
+        INSTANCE;
+
+        @Override
+        public void retain() {
+
+        }
+
+        @Override
+        public void release() {
+
+        }
+
+        @Override
+        public Object getPauseDetector() {
+            return NoPauseDetector.INSTANCE;
+        }
+
+    }
+
+    /**
      * Wrapper for initialization of {@link PauseDetector}. Encapsulates absence of LatencyUtils.
      */
     interface PauseDetectorWrapper {
-
-        /**
-         * No-operation {@link PauseDetectorWrapper} implementation.
-         */
-        PauseDetectorWrapper NO_OP = new PauseDetectorWrapper() {
-
-            @Override
-            public void release() {
-            }
-
-            @Override
-            public void retain() {
-            }
-
-            @Override
-            public Object getPauseDetector() {
-                return NoPauseDetector.INSTANCE;
-            }
-
-        };
 
         static PauseDetectorWrapper create() {
 
@@ -387,11 +395,11 @@ public class DefaultCommandLatencyCollector implements CommandLatencyCollector {
                 return new DefaultPauseDetectorWrapper();
             }
 
-            return NO_OP;
+            return NoOpPauseDetectorWrapper.INSTANCE;
         }
 
         static PauseDetectorWrapper noop() {
-            return NO_OP;
+            return NoOpPauseDetectorWrapper.INSTANCE;
         }
 
         /**

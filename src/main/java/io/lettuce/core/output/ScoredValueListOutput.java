@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -40,6 +44,8 @@ public class ScoredValueListOutput<K, V> extends CommandOutput<K, V, List<Scored
 
     private V value;
 
+    private boolean hasValue;
+
     public ScoredValueListOutput(RedisCodec<K, V> codec) {
         super(codec, Collections.emptyList());
         setSubscriber(ListSubscriber.instance());
@@ -48,12 +54,13 @@ public class ScoredValueListOutput<K, V> extends CommandOutput<K, V, List<Scored
     @Override
     public void set(ByteBuffer bytes) {
 
-        if (value == null) {
+        if (!hasValue) {
             value = codec.decodeValue(bytes);
+            hasValue = true;
             return;
         }
 
-        double score = LettuceStrings.toDouble(decodeAscii(bytes));
+        double score = LettuceStrings.toDouble(decodeString(bytes));
         set(score);
     }
 
@@ -62,6 +69,7 @@ public class ScoredValueListOutput<K, V> extends CommandOutput<K, V, List<Scored
 
         subscriber.onNext(output, ScoredValue.just(number, value));
         value = null;
+        hasValue = false;
     }
 
     @Override

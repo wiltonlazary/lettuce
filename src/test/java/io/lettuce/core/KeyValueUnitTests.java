@@ -1,6 +1,6 @@
 
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-2024 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,21 @@
  */
 package io.lettuce.core;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static io.lettuce.core.Value.just;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Optional;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
  * @author Will Glozer
  * @author Mark Paluch
  */
+@Tag(UNIT_TEST)
 class KeyValueUnitTests {
 
     @Test
@@ -122,4 +125,5 @@ class KeyValueUnitTests {
     KeyValue<String, String> kv(String key, String value) {
         return KeyValue.just(key, value);
     }
+
 }

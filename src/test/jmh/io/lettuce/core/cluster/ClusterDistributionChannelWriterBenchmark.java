@@ -1,7 +1,11 @@
 /*
- * Copyright 2017-2022 the original author or authors.
+ * Copyright 2017-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -22,6 +26,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import io.lettuce.core.protocol.ConnectionIntent;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.Scope;
 import org.openjdk.jmh.annotations.Setup;
@@ -69,7 +74,7 @@ public class ClusterDistributionChannelWriterBenchmark {
     @Setup
     public void setup() {
 
-        writer = new ClusterDistributionChannelWriter(CLIENT_OPTIONS, EMPTY_WRITER, ClusterEventListener.NO_OP);
+        writer = new ClusterDistributionChannelWriter(EMPTY_WRITER, CLIENT_OPTIONS, ClusterEventListener.NO_OP);
 
         Partitions partitions = new Partitions();
 

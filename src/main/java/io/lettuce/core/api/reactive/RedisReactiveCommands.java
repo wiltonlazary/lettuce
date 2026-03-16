@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,9 +19,9 @@
  */
 package io.lettuce.core.api.reactive;
 
-import reactor.core.publisher.Mono;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.cluster.api.reactive.RedisClusterReactiveCommands;
+import reactor.core.publisher.Mono;
 
 /**
  * A complete reactive and thread-safe Redis API with 400+ Methods.
@@ -27,11 +31,13 @@ import io.lettuce.core.cluster.api.reactive.RedisClusterReactiveCommands;
  * @author Mark Paluch
  * @since 5.0
  */
-public interface RedisReactiveCommands<K, V> extends BaseRedisReactiveCommands<K, V>, RedisAclReactiveCommands<K, V>, RedisClusterReactiveCommands<K, V>,
-        RedisGeoReactiveCommands<K, V>, RedisHashReactiveCommands<K, V>, RedisHLLReactiveCommands<K, V>,
-        RedisKeyReactiveCommands<K, V>, RedisListReactiveCommands<K, V>, RedisScriptingReactiveCommands<K, V>,
-        RedisServerReactiveCommands<K, V>, RedisSetReactiveCommands<K, V>, RedisSortedSetReactiveCommands<K, V>,
-        RedisStreamReactiveCommands<K, V>, RedisStringReactiveCommands<K, V>, RedisTransactionalReactiveCommands<K, V> {
+public interface RedisReactiveCommands<K, V> extends BaseRedisReactiveCommands<K, V>, RedisAclReactiveCommands<K, V>,
+        RedisClusterReactiveCommands<K, V>, RedisFunctionReactiveCommands<K, V>, RedisGeoReactiveCommands<K, V>,
+        RedisHashReactiveCommands<K, V>, RedisHLLReactiveCommands<K, V>, RedisKeyReactiveCommands<K, V>,
+        RedisListReactiveCommands<K, V>, RedisScriptingReactiveCommands<K, V>, RedisServerReactiveCommands<K, V>,
+        RedisSetReactiveCommands<K, V>, RedisSortedSetReactiveCommands<K, V>, RedisStreamReactiveCommands<K, V>,
+        RedisStringReactiveCommands<K, V>, RedisTransactionalReactiveCommands<K, V>, RedisJsonReactiveCommands<K, V>,
+        RedisVectorSetReactiveCommands<K, V>, RediSearchReactiveCommands<K, V> {
 
     /**
      * Authenticate to the server.

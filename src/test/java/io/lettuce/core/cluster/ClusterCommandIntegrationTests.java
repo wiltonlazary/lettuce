@@ -1,29 +1,17 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.cluster;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static io.lettuce.core.cluster.ClusterTestUtil.*;
 import static org.assertj.core.api.Assertions.*;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
 import javax.inject.Inject;
 
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -50,13 +38,18 @@ import io.lettuce.test.condition.EnabledOnCommand;
 /**
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 class ClusterCommandIntegrationTests extends TestSupport {
 
     private final RedisClient client;
+
     private final RedisClusterClient clusterClient;
+
     private final StatefulRedisConnection<String, String> connection;
+
     private final RedisClusterAsyncCommands<String, String> async;
+
     private final RedisClusterCommands<String, String> sync;
 
     @Inject
@@ -124,7 +117,7 @@ class ClusterCommandIntegrationTests extends TestSupport {
 
         Partitions partitions = ClusterPartitionParser.parse(result);
 
-        assertThat(partitions).hasSize(4);
+        assertThat(partitions).hasSizeGreaterThan(2); // Redis 7.2 doesn't include the self-partition anymore
         assertThat(partitions.getPartitionBySlot(1).getUri().getPort()).isIn(7379, 7381);
         assertThat(partitions.getPartitionBySlot(12001).getUri().getPort()).isIn(7380, 7382);
         assertThat(partitions.getPartition("127.0.0.1", 7382).is(RedisClusterNode.NodeFlag.REPLICA)).isTrue();
@@ -158,25 +151,6 @@ class ClusterCommandIntegrationTests extends TestSupport {
     }
 
     @Test
-    void testReset() {
-
-        clusterClient.reloadPartitions();
-
-        StatefulRedisClusterConnection<String, String> clusterConnection = clusterClient.connect();
-
-        TestFutures.awaitOrTimeout(clusterConnection.async().set("a", "myValue1"));
-
-        clusterConnection.reset();
-
-        RedisFuture<String> setA = clusterConnection.async().set("a", "myValue1");
-
-        assertThat(TestFutures.getOrTimeout(setA)).isEqualTo("OK");
-        assertThat(setA.getError()).isNull();
-
-        connection.close();
-    }
-
-    @Test
     void testClusterSlots() {
 
         List<Object> reply = sync.clusterSlots();
@@ -201,8 +175,8 @@ class ClusterCommandIntegrationTests extends TestSupport {
         prepareReadonlyTest(key);
 
         // assume cluster node 3 is a replica for the master 1
-        RedisCommands<String, String> connect3 = client
-                .connect(RedisURI.Builder.redis(host, ClusterTestSettings.port3).build()).sync();
+        RedisCommands<String, String> connect3 = client.connect(RedisURI.Builder.redis(host, ClusterTestSettings.port3).build())
+                .sync();
 
         assertThat(connect3.readOnly()).isEqualTo("OK");
         waitUntilValueIsVisible(key, connect3);
@@ -224,8 +198,8 @@ class ClusterCommandIntegrationTests extends TestSupport {
         prepareReadonlyTest(key);
 
         // assume cluster node 3 is a replica for the master 1
-        RedisCommands<String, String> connect3 = client
-                .connect(RedisURI.Builder.redis(host, ClusterTestSettings.port3).build()).sync();
+        RedisCommands<String, String> connect3 = client.connect(RedisURI.Builder.redis(host, ClusterTestSettings.port3).build())
+                .sync();
 
         assertThat(connect3.readOnly()).isEqualTo("OK");
         connect3.quit();
@@ -244,8 +218,8 @@ class ClusterCommandIntegrationTests extends TestSupport {
         prepareReadonlyTest(key);
 
         // assume cluster node 3 is a replica for the master 1
-        final RedisCommands<String, String> connect3 = client.connect(
-                RedisURI.Builder.redis(host, ClusterTestSettings.port3).build()).sync();
+        final RedisCommands<String, String> connect3 = client
+                .connect(RedisURI.Builder.redis(host, ClusterTestSettings.port3).build()).sync();
 
         try {
             connect3.get("b");
@@ -282,6 +256,26 @@ class ClusterCommandIntegrationTests extends TestSupport {
         assertThat(result.size()).isGreaterThan(0);
     }
 
+    @Test
+    void testClusterLinks() {
+        List<Map<String, Object>> values = sync.clusterLinks();
+        assertThat(values).isNotEmpty();
+        for (Map<String, Object> value : values) {
+            assertThat(value).containsKeys("direction", "node", "create-time", "events", "send-buffer-allocated",
+                    "send-buffer-used");
+        }
+    }
+
+    @Test
+    void testClusterLinksAsync() throws Exception {
+        RedisFuture<List<Map<String, Object>>> futureLinks = async.clusterLinks();
+        List<Map<String, Object>> values = futureLinks.get();
+        for (Map<String, Object> value : values) {
+            assertThat(value).containsKeys("direction", "node", "create-time", "events", "send-buffer-allocated",
+                    "send-buffer-used");
+        }
+    }
+
     private void prepareReadonlyTest(String key) {
 
         async.set(key, value);
@@ -294,4 +288,5 @@ class ClusterCommandIntegrationTests extends TestSupport {
     private static void waitUntilValueIsVisible(String key, RedisCommands<String, String> commands) {
         Wait.untilTrue(() -> commands.get(key) != null).waitOrTimeout();
     }
+
 }

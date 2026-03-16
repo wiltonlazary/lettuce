@@ -1,18 +1,3 @@
-/*
- * Copyright 2020-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.masterreplica;
 
 import static io.lettuce.core.masterreplica.ReplicaUtils.*;
@@ -28,6 +13,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 
 import reactor.core.publisher.Flux;
@@ -69,7 +56,7 @@ class MasterReplicaConnectionProvider<K, V> {
 
     private boolean autoFlushCommands = true;
 
-    private final Object stateLock = new Object();
+    private final Lock stateLock = new ReentrantLock();
 
     private ReadFrom readFrom;
 
@@ -222,15 +209,6 @@ class MasterReplicaConnectionProvider<K, V> {
     }
 
     /**
-     * Reset the command state of all connections.
-     *
-     * @see StatefulRedisConnection#reset()
-     */
-    public void reset() {
-        connectionProvider.forEach(StatefulRedisConnection::reset);
-    }
-
-    /**
      * Close all connections.
      */
     public void close() {
@@ -264,9 +242,12 @@ class MasterReplicaConnectionProvider<K, V> {
      */
     public void setAutoFlushCommands(boolean autoFlush) {
 
-        synchronized (stateLock) {
+        stateLock.lock();
+        try {
             this.autoFlushCommands = autoFlush;
             connectionProvider.forEach(connection -> connection.setAutoFlushCommands(autoFlush));
+        } finally {
+            stateLock.unlock();
         }
     }
 
@@ -285,12 +266,15 @@ class MasterReplicaConnectionProvider<K, V> {
      * @param knownNodes
      */
     public void setKnownNodes(Collection<RedisNodeDescription> knownNodes) {
-        synchronized (stateLock) {
+        stateLock.lock();
+        try {
 
             this.knownNodes.clear();
             this.knownNodes.addAll(knownNodes);
 
             closeStaleConnections();
+        } finally {
+            stateLock.unlock();
         }
     }
 
@@ -298,14 +282,20 @@ class MasterReplicaConnectionProvider<K, V> {
      * @return the current read-from setting.
      */
     public ReadFrom getReadFrom() {
-        synchronized (stateLock) {
+        stateLock.lock();
+        try {
             return readFrom;
+        } finally {
+            stateLock.unlock();
         }
     }
 
     public void setReadFrom(ReadFrom readFrom) {
-        synchronized (stateLock) {
+        stateLock.lock();
+        try {
             this.readFrom = readFrom;
+        } finally {
+            stateLock.unlock();
         }
     }
 
@@ -340,8 +330,11 @@ class MasterReplicaConnectionProvider<K, V> {
                     builder.build());
 
             connectionFuture.thenAccept(connection -> {
-                synchronized (stateLock) {
+                stateLock.lock();
+                try {
                     connection.setAutoFlushCommands(autoFlushCommands);
+                } finally {
+                    stateLock.unlock();
                 }
             });
 

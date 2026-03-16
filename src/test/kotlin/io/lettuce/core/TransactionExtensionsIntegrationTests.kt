@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core;
 
+import io.lettuce.TestTags
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.async.multi
 import io.lettuce.core.api.sync.multi
@@ -23,6 +28,7 @@ import kotlinx.coroutines.future.await
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import javax.inject.Inject
@@ -33,6 +39,7 @@ import javax.inject.Inject
  * @author Mark Paluch
  * @author Mikhael Sokolov
  */
+@Tag(TestTags.INTEGRATION_TEST)
 @ExtendWith(LettuceExtension::class)
 class TransactionExtensionsIntegrationTests : TestSupport() {
 

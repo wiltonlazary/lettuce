@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -30,6 +34,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import io.lettuce.core.MaintNotificationsConfig.EndpointTypeSource;
+import io.lettuce.core.api.BaseRedisClient;
 import reactor.core.publisher.Mono;
 import io.lettuce.core.event.command.CommandListener;
 import io.lettuce.core.event.connection.ConnectEvent;
@@ -56,7 +62,6 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.group.ChannelGroup;
 import io.netty.channel.group.DefaultChannelGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.util.concurrent.EventExecutorGroup;
 import io.netty.util.concurrent.Future;
 import io.netty.util.internal.logging.InternalLogger;
@@ -64,22 +69,21 @@ import io.netty.util.internal.logging.InternalLoggerFactory;
 
 /**
  * Base Redis client. This class holds the netty infrastructure, {@link ClientOptions} and the basic connection procedure. This
- * class creates the netty {@link EventLoopGroup}s for NIO ({@link NioEventLoopGroup}) and EPoll (
- * {@link io.netty.channel.epoll.EpollEventLoopGroup}) with a default of {@code Runtime.getRuntime().availableProcessors() * 4}
- * threads. Reuse the instance as much as possible since the {@link EventLoopGroup} instances are expensive and can consume a
- * huge part of your resources, if you create multiple instances.
+ * class creates different Netty {@link EventLoopGroup}s depending on the {@link NativeTransports} used.
  * <p>
- * You can set the number of threads per {@link NioEventLoopGroup} by setting the {@code io.netty.eventLoopThreads} system
- * property to a reasonable number of threads.
+ * You can set the number of threads by using the {@link ClientResources} configuration. For more details, check the
+ * documentation of the {@link DefaultClientResources} class.
  * </p>
  *
  * @author Mark Paluch
  * @author Jongyeol Choi
  * @author Poorva Gokhale
+ * @author Tihomir Mateev
  * @since 3.0
  * @see ClientResources
+ * @see DefaultClientResources
  */
-public abstract class AbstractRedisClient implements AutoCloseable {
+public abstract class AbstractRedisClient implements BaseRedisClient {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(AbstractRedisClient.class);
 
@@ -107,13 +111,11 @@ public abstract class AbstractRedisClient implements AutoCloseable {
 
     private volatile ClientOptions clientOptions = ClientOptions.create();
 
-    private volatile Duration defaultTimeout = RedisURI.DEFAULT_TIMEOUT_DURATION;
-
     /**
      * Create a new instance with client resources.
      *
-     * @param clientResources the client resources. If {@code null}, the client will create a new dedicated instance of
-     *        client resources and keep track of them.
+     * @param clientResources the client resources. If {@code null}, the client will create a new dedicated instance of client
+     *        resources and keep track of them.
      */
     protected AbstractRedisClient(ClientResources clientResources) {
 
@@ -130,47 +132,6 @@ public abstract class AbstractRedisClient implements AutoCloseable {
 
     protected int getChannelCount() {
         return channels.size();
-    }
-
-    /**
-     * Returns the default {@link Duration timeout} for commands.
-     *
-     * @return the default {@link Duration timeout} for commands.
-     * @deprecated since 6.2, use {@link RedisURI#getTimeout()} to control timeouts.
-     */
-    @Deprecated
-    public Duration getDefaultTimeout() {
-        return defaultTimeout;
-    }
-
-    /**
-     * Set the default timeout for connections created by this client. The timeout applies to connection attempts and
-     * non-blocking commands.
-     *
-     * @param timeout default connection timeout, must not be {@code null}.
-     * @since 5.0
-     * @deprecated since 6.2, use {@link RedisURI#getTimeout()} to control timeouts.
-     */
-    @Deprecated
-    public void setDefaultTimeout(Duration timeout) {
-
-        LettuceAssert.notNull(timeout, "Timeout duration must not be null");
-        LettuceAssert.isTrue(!timeout.isNegative(), "Timeout duration must be greater or equal to zero");
-
-        this.defaultTimeout = timeout;
-    }
-
-    /**
-     * Set the default timeout for connections created by this client. The timeout applies to connection attempts and
-     * non-blocking commands.
-     *
-     * @param timeout Default connection timeout.
-     * @param unit Unit of time for the timeout.
-     * @deprecated since 6.2, use {@link RedisURI#getTimeout()} to control timeouts.
-     */
-    @Deprecated
-    public void setDefaultTimeout(long timeout, TimeUnit unit) {
-        setDefaultTimeout(Duration.ofNanos(unit.toNanos(timeout)));
     }
 
     /**
@@ -216,6 +177,7 @@ public abstract class AbstractRedisClient implements AutoCloseable {
      *
      * @param listener must not be {@code null}.
      */
+    @Override
     public void addListener(RedisConnectionStateListener listener) {
 
         LettuceAssert.notNull(listener, "RedisConnectionStateListener must not be null");
@@ -227,6 +189,7 @@ public abstract class AbstractRedisClient implements AutoCloseable {
      *
      * @param listener must not be {@code null}.
      */
+    @Override
     public void removeListener(RedisConnectionStateListener listener) {
 
         LettuceAssert.notNull(listener, "RedisConnectionStateListener must not be null");
@@ -239,6 +202,7 @@ public abstract class AbstractRedisClient implements AutoCloseable {
      * @param listener must not be {@code null}.
      * @since 6.1
      */
+    @Override
     public void addListener(CommandListener listener) {
 
         LettuceAssert.notNull(listener, "CommandListener must not be null");
@@ -251,6 +215,7 @@ public abstract class AbstractRedisClient implements AutoCloseable {
      * @param listener must not be {@code null}.
      * @since 6.1
      */
+    @Override
     public void removeListener(CommandListener listener) {
 
         LettuceAssert.notNull(listener, "CommandListener must not be null");
@@ -301,8 +266,8 @@ public abstract class AbstractRedisClient implements AutoCloseable {
         LettuceAssert.notNull(connectionPoint, "ConnectionPoint must not be null");
 
         boolean domainSocket = LettuceStrings.isNotEmpty(connectionPoint.getSocket());
-        connectionBuilder.bootstrap().group(
-                getEventLoopGroup(domainSocket ? NativeTransports.eventLoopGroupClass() : Transports.eventLoopGroupClass()));
+        connectionBuilder.bootstrap().group(getEventLoopGroup(
+                domainSocket ? NativeTransports.eventLoopGroupClass(true) : Transports.eventLoopGroupClass()));
 
         if (connectionPoint.getSocket() != null) {
             NativeTransports.assertDomainSocketAvailable();
@@ -395,8 +360,7 @@ public abstract class AbstractRedisClient implements AutoCloseable {
 
         String uriString = connectionBuilder.getRedisURI().toString();
 
-        EventRecorder.getInstance().record(
-                new ConnectionCreatedEvent(uriString, connectionBuilder.endpoint().getId()));
+        EventRecorder.getInstance().record(new ConnectionCreatedEvent(uriString, connectionBuilder.endpoint().getId()));
         EventRecorder.RecordableEvent event = EventRecorder.getInstance()
                 .start(new ConnectEvent(uriString, connectionBuilder.endpoint().getId()));
 
@@ -439,15 +403,24 @@ public abstract class AbstractRedisClient implements AutoCloseable {
 
         connectFuture.addListener(future -> {
 
+            Channel channel = connectFuture.channel();
             if (!future.isSuccess()) {
 
-                logger.debug("Connecting to Redis at {}: {}", redisAddress, future.cause());
+                Throwable cause = future.cause();
+                Throwable detail = channel.attr(ConnectionBuilder.INIT_FAILURE).get();
+
+                if (detail != null) {
+                    detail.addSuppressed(cause);
+                    cause = detail;
+                }
+
+                logger.debug("Connecting to Redis at {}: {}", redisAddress, cause);
                 connectionBuilder.endpoint().initialState();
-                channelReadyFuture.completeExceptionally(future.cause());
+                channelReadyFuture.completeExceptionally(cause);
                 return;
             }
 
-            RedisHandshakeHandler handshakeHandler = connectFuture.channel().pipeline().get(RedisHandshakeHandler.class);
+            RedisHandshakeHandler handshakeHandler = channel.pipeline().get(RedisHandshakeHandler.class);
 
             if (handshakeHandler == null) {
                 channelReadyFuture.completeExceptionally(new IllegalStateException("RedisHandshakeHandler not registered"));
@@ -461,7 +434,7 @@ public abstract class AbstractRedisClient implements AutoCloseable {
                     logger.debug("Connecting to Redis at {}: Success", redisAddress);
                     RedisChannelHandler<?, ?> connection = connectionBuilder.connection();
                     connection.registerCloseables(closeableResources, connection);
-                    channelReadyFuture.complete(connectFuture.channel());
+                    channelReadyFuture.complete(channel);
                     return;
                 }
 
@@ -480,6 +453,7 @@ public abstract class AbstractRedisClient implements AutoCloseable {
      *
      * @see EventExecutorGroup#shutdownGracefully(long, long, TimeUnit)
      */
+    @Override
     public void shutdown() {
         shutdown(0, 2, TimeUnit.SECONDS);
     }
@@ -500,6 +474,7 @@ public abstract class AbstractRedisClient implements AutoCloseable {
      * @since 5.0
      * @see EventExecutorGroup#shutdownGracefully(long, long, TimeUnit)
      */
+    @Override
     public void shutdown(Duration quietPeriod, Duration timeout) {
         shutdown(quietPeriod.toNanos(), timeout.toNanos(), TimeUnit.NANOSECONDS);
     }
@@ -515,6 +490,7 @@ public abstract class AbstractRedisClient implements AutoCloseable {
      * @param timeUnit the unit of {@code quietPeriod} and {@code timeout}.
      * @see EventExecutorGroup#shutdownGracefully(long, long, TimeUnit)
      */
+    @Override
     public void shutdown(long quietPeriod, long timeout, TimeUnit timeUnit) {
 
         try {
@@ -533,6 +509,7 @@ public abstract class AbstractRedisClient implements AutoCloseable {
      * @since 4.4
      * @see EventExecutorGroup#shutdownGracefully(long, long, TimeUnit)
      */
+    @Override
     public CompletableFuture<Void> shutdownAsync() {
         return shutdownAsync(0, 2, TimeUnit.SECONDS);
     }
@@ -549,6 +526,7 @@ public abstract class AbstractRedisClient implements AutoCloseable {
      * @since 4.4
      * @see EventExecutorGroup#shutdownGracefully(long, long, TimeUnit)
      */
+    @Override
     public CompletableFuture<Void> shutdownAsync(long quietPeriod, long timeout, TimeUnit timeUnit) {
 
         if (shutdown.compareAndSet(false, true)) {
@@ -619,8 +597,16 @@ public abstract class AbstractRedisClient implements AutoCloseable {
     }
 
     protected RedisHandshake createHandshake(ConnectionState state) {
+        EndpointTypeSource source = null;
+        if (clientOptions.getMaintNotificationsConfig().maintNotificationsEnabled()) {
+            LettuceAssert.notNull(clientOptions.getMaintNotificationsConfig().getEndpointTypeSource(),
+                    "Address type source must not be null");
+
+            source = clientOptions.getMaintNotificationsConfig().getEndpointTypeSource();
+        }
+
         return new RedisHandshake(clientOptions.getConfiguredProtocolVersion(), clientOptions.isPingBeforeActivateConnection(),
-                state);
+                state, source);
     }
 
 }

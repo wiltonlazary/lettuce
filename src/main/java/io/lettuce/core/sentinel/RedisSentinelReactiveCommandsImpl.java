@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -17,20 +21,23 @@ package io.lettuce.core.sentinel;
 
 import java.net.SocketAddress;
 import java.util.Map;
+import java.util.function.Supplier;
 
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 import io.lettuce.core.AbstractRedisReactiveCommands;
+import io.lettuce.core.ClientListArgs;
 import io.lettuce.core.KillArgs;
 import io.lettuce.core.api.StatefulConnection;
 import io.lettuce.core.codec.RedisCodec;
 import io.lettuce.core.internal.LettuceAssert;
+import io.lettuce.core.json.JsonParser;
 import io.lettuce.core.output.CommandOutput;
 import io.lettuce.core.protocol.Command;
 import io.lettuce.core.protocol.CommandArgs;
 import io.lettuce.core.protocol.ProtocolKeyword;
 import io.lettuce.core.sentinel.api.StatefulRedisSentinelConnection;
 import io.lettuce.core.sentinel.api.reactive.RedisSentinelReactiveCommands;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 /**
  * A reactive and thread-safe API for a Redis Sentinel connection.
@@ -45,8 +52,9 @@ public class RedisSentinelReactiveCommandsImpl<K, V> extends AbstractRedisReacti
 
     private final SentinelCommandBuilder<K, V> commandBuilder;
 
-    public RedisSentinelReactiveCommandsImpl(StatefulConnection<K, V> connection, RedisCodec<K, V> codec) {
-        super(connection, codec);
+    public RedisSentinelReactiveCommandsImpl(StatefulConnection<K, V> connection, RedisCodec<K, V> codec,
+            Supplier<JsonParser> parser) {
+        super(connection, codec, parser);
         commandBuilder = new SentinelCommandBuilder<K, V>(codec);
     }
 
@@ -116,6 +124,11 @@ public class RedisSentinelReactiveCommandsImpl<K, V> extends AbstractRedisReacti
     }
 
     @Override
+    public Mono<String> clientSetinfo(String key, String value) {
+        return createMono(() -> commandBuilder.clientSetinfo(key, value));
+    }
+
+    @Override
     public Mono<String> clientKill(String addr) {
         return createMono(() -> commandBuilder.clientKill(addr));
     }
@@ -136,6 +149,16 @@ public class RedisSentinelReactiveCommandsImpl<K, V> extends AbstractRedisReacti
     }
 
     @Override
+    public Mono<String> clientList(ClientListArgs clientListArgs) {
+        return createMono(() -> commandBuilder.clientList(clientListArgs));
+    }
+
+    @Override
+    public Mono<String> clientInfo() {
+        return createMono(commandBuilder::clientInfo);
+    }
+
+    @Override
     public Mono<String> info() {
         return createMono(commandBuilder::info);
     }
@@ -145,7 +168,7 @@ public class RedisSentinelReactiveCommandsImpl<K, V> extends AbstractRedisReacti
         return createMono(() -> commandBuilder.info(section));
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
     public <T> Flux<T> dispatch(ProtocolKeyword type, CommandOutput<K, V, ?> output) {
 
@@ -155,7 +178,7 @@ public class RedisSentinelReactiveCommandsImpl<K, V> extends AbstractRedisReacti
         return (Flux) createFlux(() -> new Command<>(type, output));
     }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
     public <T> Flux<T> dispatch(ProtocolKeyword type, CommandOutput<K, V, ?> output, CommandArgs<K, V> args) {
 
@@ -164,16 +187,6 @@ public class RedisSentinelReactiveCommandsImpl<K, V> extends AbstractRedisReacti
         LettuceAssert.notNull(args, "CommandArgs type must not be null");
 
         return (Flux) createFlux(() -> new Command<>(type, output, args));
-    }
-
-    @Override
-    public void close() {
-        getStatefulConnection().close();
-    }
-
-    @Override
-    public boolean isOpen() {
-        return getStatefulConnection().isOpen();
     }
 
     @Override

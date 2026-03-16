@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -37,6 +41,8 @@ public class MapOutput<K, V> extends CommandOutput<K, V, Map<K, V>> {
 
     private K key;
 
+    private boolean hasKey;
+
     public MapOutput(RedisCodec<K, V> codec) {
         super(codec, Collections.emptyMap());
     }
@@ -44,28 +50,62 @@ public class MapOutput<K, V> extends CommandOutput<K, V, Map<K, V>> {
     @Override
     public void set(ByteBuffer bytes) {
 
-        if (key == null) {
+        if (!hasKey) {
             key = (bytes == null) ? null : codec.decodeKey(bytes);
+            hasKey = true;
             return;
         }
 
         V value = (bytes == null) ? null : codec.decodeValue(bytes);
         output.put(key, value);
         key = null;
+        hasKey = false;
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public void set(long integer) {
 
-        if (key == null) {
+        if (!hasKey) {
             key = (K) Long.valueOf(integer);
+            hasKey = true;
             return;
         }
 
         V value = (V) Long.valueOf(integer);
         output.put(key, value);
         key = null;
+        hasKey = false;
+    }
+
+    @Override
+    public void set(double number) {
+
+        if (!hasKey) {
+            key = (K) Double.valueOf(number);
+            hasKey = true;
+            return;
+        }
+
+        V value = (V) Double.valueOf(number);
+        output.put(key, value);
+        key = null;
+        hasKey = false;
+    }
+
+    @Override
+    public void set(boolean flag) {
+
+        if (!hasKey) {
+            key = (K) Boolean.valueOf(flag);
+            hasKey = true;
+            return;
+        }
+
+        V value = (V) Boolean.valueOf(flag);
+        output.put(key, value);
+        key = null;
+        hasKey = false;
     }
 
     @Override

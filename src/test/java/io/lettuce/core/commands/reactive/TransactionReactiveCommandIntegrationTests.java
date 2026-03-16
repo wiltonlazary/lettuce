@@ -1,27 +1,13 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.commands.reactive;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.*;
 
 import javax.inject.Inject;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import reactor.test.StepVerifier;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisException;
@@ -29,10 +15,12 @@ import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.reactive.RedisReactiveCommands;
 import io.lettuce.core.commands.TransactionCommandIntegrationTests;
 import io.lettuce.test.ReactiveSyncInvocationHandler;
+import reactor.test.StepVerifier;
 
 /**
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 public class TransactionReactiveCommandIntegrationTests extends TransactionCommandIntegrationTests {
 
     private final RedisClient client;
@@ -54,7 +42,7 @@ public class TransactionReactiveCommandIntegrationTests extends TransactionComma
 
         StepVerifier.create(commands.multi()).expectNext("OK").verifyComplete();
 
-        commands.set(key, value).toProcessor();
+        commands.set(key, value).toFuture();
 
         StepVerifier.create(commands.discard()).expectNext("OK").verifyComplete();
         StepVerifier.create(commands.get(key)).verifyComplete();
@@ -70,7 +58,7 @@ public class TransactionReactiveCommandIntegrationTests extends TransactionComma
         StepVerifier.create(commands.watch(key)).expectNext("OK").verifyComplete();
         StepVerifier.create(commands.multi()).expectNext("OK").verifyComplete();
 
-        commands.set(key, value).toProcessor();
+        commands.set(key, value).toFuture();
 
         otherConnection.sync().del(key);
 
@@ -97,9 +85,9 @@ public class TransactionReactiveCommandIntegrationTests extends TransactionComma
     void errorInMulti() {
 
         StepVerifier.create(commands.multi()).expectNext("OK").verifyComplete();
-        commands.set(key, value).toProcessor();
-        commands.lpop(key).toProcessor();
-        commands.get(key).toProcessor();
+        commands.set(key, value).toFuture();
+        commands.lpop(key).toFuture();
+        commands.get(key).toFuture();
 
         StepVerifier.create(commands.exec()).consumeNextWith(actual -> {
 
@@ -135,10 +123,10 @@ public class TransactionReactiveCommandIntegrationTests extends TransactionComma
 
         StepVerifier.create(commands.multi()).expectNext("OK").verifyComplete();
 
-        commands.set("key1", "value1").toProcessor();
-        commands.set("key2", "value2").toProcessor();
-        commands.mget("key1", "key2").collectList().toProcessor();
-        commands.llen("something").toProcessor();
+        commands.set("key1", "value1").toFuture();
+        commands.set("key2", "value2").toFuture();
+        commands.mget("key1", "key2").collectList().toFuture();
+        commands.llen("something").toFuture();
 
         StepVerifier.create(commands.exec()).consumeNextWith(actual -> {
 

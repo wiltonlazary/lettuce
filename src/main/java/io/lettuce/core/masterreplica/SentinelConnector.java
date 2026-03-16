@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -35,6 +39,7 @@ import io.netty.util.internal.logging.InternalLoggerFactory;
  * {@link MasterReplicaConnector} to connect a Sentinel-managed Master/Replica setup using a Sentinel {@link RedisURI}.
  *
  * @author Mark Paluch
+ * @author Jim Brunner
  * @since 5.1
  */
 class SentinelConnector<K, V> implements MasterReplicaConnector<K, V> {
@@ -83,16 +88,17 @@ class SentinelConnector<K, V> implements MasterReplicaConnector<K, V> {
         connectionProvider.setKnownNodes(nodes);
 
         MasterReplicaChannelWriter channelWriter = new MasterReplicaChannelWriter(connectionProvider,
-                redisClient.getResources()) {
+                redisClient.getResources(), redisClient.getOptions()) {
 
             @Override
             public CompletableFuture<Void> closeAsync() {
                 return CompletableFuture.allOf(super.closeAsync(), sentinelTopologyRefresh.closeAsync());
             }
+
         };
 
         StatefulRedisMasterReplicaConnectionImpl<K, V> connection = new StatefulRedisMasterReplicaConnectionImpl<>(
-                channelWriter, codec, redisURI.getTimeout());
+                channelWriter, codec, redisURI.getTimeout(), redisClient.getOptions().getJsonParser());
         connection.setOptions(redisClient.getOptions());
 
         CompletionStage<Void> bind = sentinelTopologyRefresh.bind(runnable);

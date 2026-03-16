@@ -1,20 +1,6 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.commands.reactive;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static io.lettuce.core.BitFieldArgs.offset;
 import static io.lettuce.core.BitFieldArgs.signed;
 import static io.lettuce.core.BitFieldArgs.typeWidthBasedOffset;
@@ -23,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import javax.inject.Inject;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import reactor.test.StepVerifier;
@@ -37,6 +24,7 @@ import io.lettuce.test.ReactiveSyncInvocationHandler;
 /**
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 class BitReactiveCommandIntegrationTests extends BitCommandIntegrationTests {
 
     private RedisStringReactiveCommands<String, String> reactive;
@@ -66,6 +54,15 @@ class BitReactiveCommandIntegrationTests extends BitCommandIntegrationTests {
         StepVerifier.create(reactive.bitfield(key, bitFieldArgs)).expectNext(Value.just(0L), Value.just(0L)).verifyComplete();
 
         assertThat(bitstring.get(key)).isEqualTo("10000000");
+    }
+
+    @Test
+    void bitfieldGetWithUnsignedOffset() {
+
+        long unsignedIntMax = (1L << 32) - 1;
+        BitFieldArgs bitFieldArgs = BitFieldArgs.Builder.set(signed(8), 0, 1).get(signed(1), (int) unsignedIntMax);
+
+        StepVerifier.create(reactive.bitfield(key, bitFieldArgs)).expectNext(Value.just(0L), Value.just(0L)).verifyComplete();
     }
 
     @Test
@@ -105,10 +102,11 @@ class BitReactiveCommandIntegrationTests extends BitCommandIntegrationTests {
     @Test
     void bitfieldOverflow() {
 
-        BitFieldArgs bitFieldArgs = BitFieldArgs.Builder.overflow(FAIL).set(signed(8), 9, 5)
-                .incrBy(signed(8), Integer.MAX_VALUE);
+        BitFieldArgs bitFieldArgs = BitFieldArgs.Builder.overflow(FAIL).set(signed(8), 9, 5).incrBy(signed(8),
+                Integer.MAX_VALUE);
 
         StepVerifier.create(reactive.bitfield(key, bitFieldArgs)).expectNext(Value.just(0L)).expectNext(Value.empty())
                 .verifyComplete();
     }
+
 }

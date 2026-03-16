@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -91,6 +95,15 @@ public class CommandDetailParser {
         aclCategoriesMap.put("@connection", AclCategory.CONNECTION);
         aclCategoriesMap.put("@transaction", AclCategory.TRANSACTION);
         aclCategoriesMap.put("@scripting", AclCategory.SCRIPTING);
+        aclCategoriesMap.put("@bloom", AclCategory.BLOOM);
+        aclCategoriesMap.put("@cuckoo", AclCategory.CUCKOO);
+        aclCategoriesMap.put("@cms", AclCategory.CMS);
+        aclCategoriesMap.put("@topk", AclCategory.TOPK);
+        aclCategoriesMap.put("@tdigest", AclCategory.TDIGEST);
+        aclCategoriesMap.put("@search", AclCategory.SEARCH);
+        aclCategoriesMap.put("@timeseries", AclCategory.TIMESERIES);
+        aclCategoriesMap.put("@json", AclCategory.JSON);
+
         ACL_CATEGORY_MAPPING = Collections.unmodifiableMap(aclCategoriesMap);
     }
 

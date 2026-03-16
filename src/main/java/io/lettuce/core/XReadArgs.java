@@ -1,25 +1,10 @@
-/*
- * Copyright 2018-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core;
-
-import java.time.Duration;
 
 import io.lettuce.core.internal.LettuceAssert;
 import io.lettuce.core.protocol.CommandArgs;
 import io.lettuce.core.protocol.CommandKeyword;
+
+import java.time.Duration;
 
 /**
  * Argument list builder for the Redis <a href="https://redis.io/commands/xread">XREAD</a> and {@literal XREADGROUP} commands.
@@ -30,13 +15,15 @@ import io.lettuce.core.protocol.CommandKeyword;
  * @author Mark Paluch
  * @since 5.1
  */
-public class XReadArgs {
+public class XReadArgs implements CompositeArgument {
 
     private Long block;
 
     private Long count;
 
     private boolean noack;
+
+    private Long claimMinIdleTime;
 
     /**
      * Builder entry points for {@link XReadArgs}.
@@ -105,6 +92,31 @@ public class XReadArgs {
             return new XReadArgs().noack(noack);
         }
 
+        /**
+         * Create a new {@link XReadArgs} and set CLAIM min-idle-time.
+         * 
+         * @implNote Only valid for XREADGROUP.
+         * @param milliseconds minimum idle time.
+         * @return new {@link XReadArgs} with CLAIM set
+         * @since 7.1
+         */
+        public static XReadArgs claim(long milliseconds) {
+            return new XReadArgs().claim(milliseconds);
+        }
+
+        /**
+         * Create a new {@link XReadArgs} and set CLAIM min-idle-time.
+         * 
+         * @implNote Only valid for XREADGROUP.
+         * @param timeout minimum idle time.
+         * @return new {@link XReadArgs} with CLAIM set
+         * @since 7.1
+         */
+        public static XReadArgs claim(Duration timeout) {
+            LettuceAssert.notNull(timeout, "Claim timeout must not be null");
+            return claim(timeout.toMillis());
+        }
+
     }
 
     /**
@@ -156,6 +168,35 @@ public class XReadArgs {
         return this;
     }
 
+    /**
+     * Claim idle pending messages first with a minimum idle time (milliseconds).
+     * 
+     * @implNote Only valid for XREADGROUP.
+     * @param milliseconds minimum idle time.
+     * @return {@code this}.
+     * @since 7.1
+     */
+    public XReadArgs claim(long milliseconds) {
+
+        this.claimMinIdleTime = milliseconds;
+        return this;
+    }
+
+    /**
+     * Claim idle pending messages first with a minimum idle time (milliseconds).
+     * 
+     * @implNote Only valid for XREADGROUP.
+     * @param timeout minimum idle time.
+     * @return {@code this}.
+     * @since 7.1
+     */
+    public XReadArgs claim(Duration timeout) {
+
+        LettuceAssert.notNull(timeout, "Claim timeout must not be null");
+
+        return claim(timeout.toMillis());
+    }
+
     public <K, V> void build(CommandArgs<K, V> args) {
 
         if (block != null) {
@@ -168,6 +209,10 @@ public class XReadArgs {
 
         if (noack) {
             args.add(CommandKeyword.NOACK);
+        }
+
+        if (claimMinIdleTime != null) {
+            args.add(CommandKeyword.CLAIM).add(claimMinIdleTime);
         }
     }
 
@@ -186,7 +231,7 @@ public class XReadArgs {
         }
 
         /**
-         * Read all new arriving elements from the stream identified by {@code name}.
+         * Read all new arriving elements from the stream identified by {@code name} excluding any elements before this call
          *
          * @param name must not be {@code null}.
          * @return the {@link StreamOffset} object without a specific offset.
@@ -196,6 +241,21 @@ public class XReadArgs {
             LettuceAssert.notNull(name, "Stream must not be null");
 
             return new StreamOffset<>(name, "$");
+        }
+
+        /**
+         * Read all new arriving elements from the stream identified by {@code name} including the last element added before
+         * this call
+         *
+         * @param name must not be {@code null}.
+         * @return the {@link StreamOffset} object without a specific offset.
+         * @since 6.4
+         */
+        public static <K> StreamOffset<K> last(K name) {
+
+            LettuceAssert.notNull(name, "Stream must not be null");
+
+            return new StreamOffset<>(name, "+");
         }
 
         /**

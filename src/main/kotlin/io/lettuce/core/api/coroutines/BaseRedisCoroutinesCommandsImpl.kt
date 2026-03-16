@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -34,6 +38,7 @@ import kotlinx.coroutines.reactive.awaitSingle
  * @param <K> Key type.
  * @param <V> Value type.
  * @author Mikhael Sokolov
+ * @author Ali Takavci
  * @since 6.0
  */
 @ExperimentalLettuceCoroutinesApi
@@ -47,7 +52,15 @@ internal class BaseRedisCoroutinesCommandsImpl<K : Any, V : Any>(internal val op
 
     override suspend fun pubsubNumsub(vararg channels: K): Map<K, Long> = ops.pubsubNumsub(*channels).awaitSingle()
 
+    override suspend fun pubsubShardChannels(): List<K> = ops.pubsubShardChannels().asFlow().toList()
+
+    override suspend fun pubsubShardChannels(pattern: K): List<K> = ops.pubsubShardChannels(pattern).asFlow().toList()
+
+    override suspend fun pubsubShardNumsub(vararg shardChannels: K): Map<K, Long> = ops.pubsubShardNumsub(*shardChannels).awaitSingle()
+
     override suspend fun pubsubNumpat(): Long = ops.pubsubNumpat().awaitSingle()
+
+    override suspend fun spublish(shardChannel: K, message: V): Long? = ops.spublish(shardChannel, message).awaitFirstOrNull()
 
     override suspend fun echo(msg: V): V = ops.echo(msg).awaitSingle()
 
@@ -66,12 +79,6 @@ internal class BaseRedisCoroutinesCommandsImpl<K : Any, V : Any>(internal val op
     override fun <T : Any> dispatch(type: ProtocolKeyword, output: CommandOutput<K, V, T>): Flow<T> = ops.dispatch<T>(type, output).asFlow()
 
     override fun <T : Any> dispatch(type: ProtocolKeyword, output: CommandOutput<K, V, T>, args: CommandArgs<K, V>): Flow<T> = ops.dispatch<T>(type, output, args).asFlow()
-
-    override fun isOpen(): Boolean = ops.isOpen
-
-    override fun setAutoFlushCommands(autoFlush: Boolean) = ops.setAutoFlushCommands(autoFlush)
-
-    override fun flushCommands() = ops.flushCommands()
 
 }
 

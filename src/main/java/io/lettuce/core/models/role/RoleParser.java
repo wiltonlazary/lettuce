@@ -1,18 +1,3 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.models.role;
 
 import java.util.ArrayList;
@@ -37,7 +22,7 @@ public class RoleParser {
 
     protected static final Map<String, RedisInstance.Role> ROLE_MAPPING;
 
-    protected static final Map<String, RedisSlaveInstance.State> REPLICA_STATE_MAPPING;
+    protected static final Map<String, RedisReplicaInstance.State> REPLICA_STATE_MAPPING;
 
     static {
         Map<String, RedisInstance.Role> roleMap = new HashMap<>();
@@ -52,6 +37,9 @@ public class RoleParser {
         replicas.put("connected", RedisReplicaInstance.State.CONNECTED);
         replicas.put("connecting", RedisReplicaInstance.State.CONNECTING);
         replicas.put("sync", RedisReplicaInstance.State.SYNC);
+        replicas.put("handshake", RedisReplicaInstance.State.HANDSHAKE);
+        replicas.put("none", RedisReplicaInstance.State.NONE);
+        replicas.put("unknown", RedisReplicaInstance.State.NONE);
 
         REPLICA_STATE_MAPPING = Collections.unmodifiableMap(replicas);
     }
@@ -117,6 +105,9 @@ public class RoleParser {
         ReplicationPartner master = new ReplicationPartner(HostAndPort.of(ip, Math.toIntExact(port)), replicationOffset);
 
         RedisReplicaInstance.State state = REPLICA_STATE_MAPPING.get(stateString);
+        if (state == null) {
+            throw new IllegalStateException("Cannot resolve Replica State for \"" + stateString + "\"");
+        }
 
         return new RedisReplicaInstance(master, state);
     }
@@ -128,8 +119,7 @@ public class RoleParser {
 
         List<String> monitoredMasters = getMonitoredUpstreams(iterator);
 
-        RedisSentinelInstance result = new RedisSentinelInstance(Collections.unmodifiableList(monitoredMasters));
-        return result;
+        return new RedisSentinelInstance(Collections.unmodifiableList(monitoredMasters));
     }
 
     private static List<String> getMonitoredUpstreams(Iterator<?> iterator) {

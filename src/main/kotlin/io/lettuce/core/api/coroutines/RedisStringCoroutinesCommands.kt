@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2017-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -297,6 +301,17 @@ interface RedisStringCoroutinesCommands<K : Any, V : Any> {
     suspend fun msetnx(map: Map<K, V>): Boolean?
 
     /**
+     * Set multiple keys to multiple values with optional conditions and expiration. Emits: numkeys, pairs, then [NX|XX] and one
+     * of [EX|PX|EXAT|PXAT|KEEPTTL].
+     *
+     * @param map the map of keys and values.
+     * @param args the [MSetExArgs] specifying NX/XX and expiration.
+     * @return Boolean from integer-reply: `1` if all keys were set, `0` otherwise.
+     * @since 7.1
+     */
+    suspend fun msetex(map: Map<K, V>, args: MSetExArgs): Boolean?
+
+    /**
      * Set the string value of a key.
      *
      * @param key the key.
@@ -388,23 +403,22 @@ interface RedisStringCoroutinesCommands<K : Any, V : Any> {
     suspend fun setrange(key: K, offset: Long, value: V): Long?
 
     /**
-     * The STRALGO command implements complex algorithms that operate on strings. This method uses the LCS algorithm (longest
-     * common substring).
+     * The LCS command implements the longest common subsequence algorithm.
      *
      * <ul>
-     * <li>Without modifiers the string representing the longest common substring is returned.</li>
-     * <li>When [StrAlgoArgs#justLen LEN] is given the command returns the length of the longest common substring.</li>
-     * <li>When [StrAlgoArgs#withIdx IDX] is given the command returns an array with the LCS length and all the ranges
-     * in both the strings, start and end offset for each string, where there are matches. When
-     * [StrAlgoArgs#withMatchLen WITHMATCHLEN] is given each array representing a match will also have the length of the
-     * match.</li>
+     * <li>Without modifiers, the string representing the longest common substring is returned.</li>
+     * <li>When [LcsArgs#justLen LEN] is given the command returns the length of the longest common substring.</li>
+     * <li>When [LcsArgs#withIdx IDX] is given the command returns an array with the LCS length and all the ranges in
+     * both the strings, start and end offset for each string, where there are matches. When [LcsArgs#withMatchLen
+     * WITHMATCHLEN] is given each array representing a match will also have the length of the match.</li>
      * </ul>
      *
-     * @param strAlgoArgs command arguments.
-     * @return StringMatchResult.
-     * @since 6.0
+     * @param lcsArgs command arguments supplied by the [LcsArgs].
+     * @return StringMatchResult
+     * @see <a href="https://redis.io/commands/lcs">LCS command refference</a>
+     * @since 6.6
      */
-    suspend fun stralgoLcs(strAlgoArgs: StrAlgoArgs): StringMatchResult?
+    suspend fun lcs(lcsArgs: LcsArgs): StringMatchResult?
 
     /**
      * Get the length of the value stored in a key.

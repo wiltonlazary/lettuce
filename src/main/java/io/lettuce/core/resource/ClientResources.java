@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -52,6 +56,8 @@ import io.netty.util.concurrent.Future;
  * @author Mark Paluch
  * @author Mikhael Sokolov
  * @author Yohei Ueki
+ * @author Euiyoung Nam
+ * @author Hari Mani
  * @since 3.4
  * @see DefaultClientResources
  */
@@ -106,7 +112,7 @@ public interface ClientResources {
         Builder addressResolverGroup(AddressResolverGroup<?> addressResolverGroup);
 
         /**
-         * Sets the {@link CommandLatencyCollector} that can that can be used across different instances of the RedisClient.
+         * Sets the {@link CommandLatencyCollector} that can be used across different instances of the RedisClient.
          *
          * @param commandLatencyCollector the command latency collector, must not be {@code null}.
          * @return {@code this} {@link Builder}.
@@ -118,7 +124,7 @@ public interface ClientResources {
         }
 
         /**
-         * Sets the {@link CommandLatencyRecorder} that can that can be used across different instances of the RedisClient.
+         * Sets the {@link CommandLatencyRecorder} that can be used across different instances of the RedisClient.
          *
          * @param latencyRecorder the command latency recorder, must not be {@code null}.
          * @return {@code this} {@link Builder}.
@@ -127,8 +133,8 @@ public interface ClientResources {
         Builder commandLatencyRecorder(CommandLatencyRecorder latencyRecorder);
 
         /**
-         * Sets the {@link CommandLatencyCollectorOptions} that can that can be used across different instances of the
-         * RedisClient. The options are only effective if no {@code commandLatencyCollector} is provided.
+         * Sets the {@link CommandLatencyCollectorOptions} that can be used across different instances of the RedisClient. The
+         * options are only effective if no {@code commandLatencyCollector} is provided.
          *
          * @param commandLatencyCollectorOptions the command latency collector options, must not be {@code null}.
          * @return {@code this} {@link Builder}.
@@ -159,19 +165,7 @@ public interface ClientResources {
         Builder computationThreadPoolSize(int computationThreadPoolSize);
 
         /**
-         * Sets the {@link DnsResolver} that is used to resolve hostnames to {@link java.net.InetAddress}. Defaults to
-         * {@link DnsResolvers#UNRESOLVED} to use netty's {@link AddressResolverGroup}.
-         *
-         * @param dnsResolver the DNS resolver, must not be {@code null}.
-         * @return {@code this} {@link Builder}.
-         * @since 4.3
-         * @deprecated since 6.1. Configure {@link AddressResolverGroup} instead.
-         */
-        @Deprecated
-        Builder dnsResolver(DnsResolver dnsResolver);
-
-        /**
-         * Sets the {@link EventBus} that can that can be used across different instances of the RedisClient.
+         * Sets the {@link EventBus} that can be used across different instances of the RedisClient.
          *
          * @param eventBus the event bus, must not be {@code null}.
          * @return {@code this} {@link Builder}.
@@ -353,14 +347,6 @@ public interface ClientResources {
     int computationThreadPoolSize();
 
     /**
-     * Return the {@link DnsResolver}.
-     *
-     * @return the DNS resolver.
-     * @since 4.3
-     */
-    DnsResolver dnsResolver();
-
-    /**
      * Return the event bus used to publish events.
      *
      * @return the event bus
@@ -437,4 +423,5 @@ public interface ClientResources {
      * @since 5.1
      */
     Tracing tracing();
+
 }

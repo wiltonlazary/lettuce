@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -17,11 +21,16 @@ package io.lettuce.core.cluster.api.reactive;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 
+import io.lettuce.core.HotkeysArgs;
+import io.lettuce.core.HotkeysReply;
+import io.lettuce.core.MSetExArgs;
+import io.lettuce.core.Range;
+import io.lettuce.core.SetArgs;
+import io.lettuce.core.api.reactive.*;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import io.lettuce.core.Range;
-import io.lettuce.core.api.reactive.*;
 
 /**
  * A complete reactive and thread-safe cluster Redis API with 400+ Methods.
@@ -33,10 +42,11 @@ import io.lettuce.core.api.reactive.*;
  * @since 5.0
  */
 public interface RedisClusterReactiveCommands<K, V> extends BaseRedisReactiveCommands<K, V>, RedisAclReactiveCommands<K, V>,
-        RedisGeoReactiveCommands<K, V>, RedisHashReactiveCommands<K, V>, RedisHLLReactiveCommands<K, V>,
-        RedisKeyReactiveCommands<K, V>, RedisListReactiveCommands<K, V>, RedisScriptingReactiveCommands<K, V>,
-        RedisServerReactiveCommands<K, V>, RedisSetReactiveCommands<K, V>, RedisSortedSetReactiveCommands<K, V>,
-        RedisStreamReactiveCommands<K, V>, RedisStringReactiveCommands<K, V> {
+        RedisFunctionReactiveCommands<K, V>, RedisGeoReactiveCommands<K, V>, RedisHashReactiveCommands<K, V>,
+        RedisHLLReactiveCommands<K, V>, RedisKeyReactiveCommands<K, V>, RedisListReactiveCommands<K, V>,
+        RedisScriptingReactiveCommands<K, V>, RedisServerReactiveCommands<K, V>, RedisSetReactiveCommands<K, V>,
+        RedisSortedSetReactiveCommands<K, V>, RedisStreamReactiveCommands<K, V>, RedisStringReactiveCommands<K, V>,
+        RedisJsonReactiveCommands<K, V>, RedisVectorSetReactiveCommands<K, V>, RediSearchReactiveCommands<K, V> {
 
     /**
      * Set the default timeout for operations. A zero timeout value indicates to not time out.
@@ -145,6 +155,16 @@ public interface RedisClusterReactiveCommands<K, V> extends BaseRedisReactiveCom
     Mono<String> clusterFailover(boolean force);
 
     /**
+     * Failover a cluster node. Turns the currently connected node into a master and the master into its replica.
+     *
+     * @param force do not coordinate with master if {@code true}
+     * @param takeOver do not coordinate with the rest of the cluster if {@code true}
+     * @return String simple-string-reply
+     * @since 6.2.3
+     */
+    Mono<String> clusterFailover(boolean force, boolean takeOver);
+
+    /**
      * Delete all the slots associated with the specified node. The number of deleted slots is returned.
      *
      * @return String simple-string-reply
@@ -201,6 +221,16 @@ public interface RedisClusterReactiveCommands<K, V> extends BaseRedisReactiveCom
      * @return String simple-string-reply
      */
     Mono<String> clusterMyId();
+
+    /**
+     * Obtain the shard ID for the currently connected node.
+     * <p>
+     * The CLUSTER MYSHARDID command returns the unique, auto-generated identifier that is associated with the shard to which
+     * the connected cluster node belongs.
+     *
+     * @return String simple-string-reply
+     */
+    Mono<String> clusterMyShardId();
 
     /**
      * Obtain details about all cluster nodes. Can be parsed using
@@ -343,5 +373,71 @@ public interface RedisClusterReactiveCommands<K, V> extends BaseRedisReactiveCom
      * @return String simple-string-reply
      */
     Mono<String> readWrite();
+
+    /**
+     * Retrieves information about the TCP links between nodes in a Redis Cluster.
+     * 
+     * @return List of maps containing attributes and values for each peer link.
+     */
+    Mono<List<Map<String, Object>>> clusterLinks();
+
+    /**
+     * Set multiple keys to multiple values with optional conditions and expiration. Emits: numkeys, pairs, then [NX|XX] and one
+     * of [EX|PX|EXAT|PXAT|KEEPTTL]. Cross-slot keys will result in multiple calls to the particular cluster nodes.
+     *
+     * @param map the map of keys and values.
+     * @param args the {@link MSetExArgs} specifying NX/XX and expiration.
+     * @return Boolean from integer-reply: {@code 1} if all keys were set, {@code 0} otherwise.
+     * @since 7.1
+     */
+    Mono<Boolean> msetex(Map<K, V> map, MSetExArgs args);
+
+    /**
+     * HOTKEYS commands are not supported on the cluster client. Use node selection API or target specific nodes via
+     * {@code getConnection(nodeId)}.
+     *
+     * @throws UnsupportedOperationException HOTKEYS is a node-specific command
+     */
+    @Override
+    default Mono<String> hotkeysStart(HotkeysArgs args) {
+        throw new UnsupportedOperationException(
+                "HOTKEYS commands are not supported on cluster client. Use node selection API or target specific nodes.");
+    }
+
+    /**
+     * HOTKEYS commands are not supported on the cluster client. Use node selection API or target specific nodes via
+     * {@code getConnection(nodeId)}.
+     *
+     * @throws UnsupportedOperationException HOTKEYS is a node-specific command
+     */
+    @Override
+    default Mono<String> hotkeysStop() {
+        throw new UnsupportedOperationException(
+                "HOTKEYS commands are not supported on cluster client. Use node selection API or target specific nodes.");
+    }
+
+    /**
+     * HOTKEYS commands are not supported on the cluster client. Use node selection API or target specific nodes via
+     * {@code getConnection(nodeId)}.
+     *
+     * @throws UnsupportedOperationException HOTKEYS is a node-specific command
+     */
+    @Override
+    default Mono<String> hotkeysReset() {
+        throw new UnsupportedOperationException(
+                "HOTKEYS commands are not supported on cluster client. Use node selection API or target specific nodes.");
+    }
+
+    /**
+     * HOTKEYS commands are not supported on the cluster client. Use node selection API or target specific nodes via
+     * {@code getConnection(nodeId)}.
+     *
+     * @throws UnsupportedOperationException HOTKEYS is a node-specific command
+     */
+    @Override
+    default Mono<HotkeysReply> hotkeysGet() {
+        throw new UnsupportedOperationException(
+                "HOTKEYS commands are not supported on cluster client. Use node selection API or target specific nodes.");
+    }
 
 }

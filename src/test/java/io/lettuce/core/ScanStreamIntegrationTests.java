@@ -1,7 +1,11 @@
 /*
- * Copyright 2017-2022 the original author or authors.
+ * Copyright 2017-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,14 +19,18 @@
  */
 package io.lettuce.core;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.util.List;
 import java.util.stream.IntStream;
 
 import javax.inject.Inject;
 
+import io.lettuce.test.condition.RedisConditions;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,11 +45,13 @@ import io.lettuce.test.LettuceExtension;
 /**
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ScanStreamIntegrationTests extends TestSupport {
 
     private final StatefulRedisConnection<String, String> connection;
+
     private final RedisCommands<String, String> redis;
 
     @Inject
@@ -83,6 +93,22 @@ class ScanStreamIntegrationTests extends TestSupport {
         StepVerifier.create(ScanStream.hscan(reactive, key, ScanArgs.Builder.limit(200)).take(250)).expectNextCount(250)
                 .verifyComplete();
         StepVerifier.create(ScanStream.hscan(reactive, key)).expectNextCount(1000).verifyComplete();
+    }
+
+    @Test
+    void shouldHscanNovaluesIteratively() {
+        // NOVALUES flag (since Redis 7.4)
+        assumeTrue(RedisConditions.of(redis).hasVersionGreaterOrEqualsTo("7.4"));
+
+        for (int i = 0; i < 1000; i++) {
+            redis.hset(key, "field-" + i, "value-" + i);
+        }
+
+        RedisReactiveCommands<String, String> reactive = redis.getStatefulConnection().reactive();
+
+        StepVerifier.create(ScanStream.hscanNovalues(reactive, key, ScanArgs.Builder.limit(200)).take(250)).expectNextCount(250)
+                .verifyComplete();
+        StepVerifier.create(ScanStream.hscanNovalues(reactive, key)).expectNextCount(1000).verifyComplete();
     }
 
     @Test
@@ -135,4 +161,30 @@ class ScanStreamIntegrationTests extends TestSupport {
 
         assertThat(redis.scard(targetKey)).isEqualTo(5_000);
     }
+
+    @Test
+    void shouldCorrectlyEmitKeysWithConcurrentPoll() {
+        // NOVALUES flag (since Redis 7.4)
+        assumeTrue(RedisConditions.of(redis).hasVersionGreaterOrEqualsTo("7.4"));
+
+        RedisReactiveCommands<String, String> commands = connection.reactive();
+
+        String sourceKey = "source";
+        String targetKey = "target";
+
+        IntStream.range(0, 10_000).forEach(num -> connection.async().hset(sourceKey, String.valueOf(num), String.valueOf(num)));
+
+        redis.del(targetKey);
+
+        ScanStream.hscanNovalues(commands, sourceKey) //
+                .map(Integer::parseInt) //
+                .filter(num -> num % 2 == 0) //
+                .concatMap(item -> commands.sadd(targetKey, String.valueOf(item))) //
+                .as(StepVerifier::create) //
+                .expectNextCount(5000) //
+                .verifyComplete();
+
+        assertThat(redis.scard(targetKey)).isEqualTo(5_000);
+    }
+
 }

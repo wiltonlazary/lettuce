@@ -1,25 +1,13 @@
-/*
- * Copyright 2017-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.dynamic;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.Arrays;
+import java.util.concurrent.CountDownLatch;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -34,7 +22,9 @@ import io.lettuce.core.protocol.RedisCommand;
 
 /**
  * @author Mark Paluch
+ * @author Ivo Gaydajiev
  */
+@Tag(UNIT_TEST)
 @ExtendWith(MockitoExtension.class)
 class SimpleBatcherUnitTests {
 
@@ -139,7 +129,46 @@ class SimpleBatcherUnitTests {
         verify(connection).dispatch(Arrays.asList(c1, c2));
     }
 
+    @Test
+    void shouldDispatchCommandsQueuedDuringOngoingFlush() throws InterruptedException {
+        RedisCommand<Object, Object, Object> c1 = createCommand();
+        RedisCommand<Object, Object, Object> c2 = createCommand();
+
+        CountDownLatch batchFlushLatch1 = new CountDownLatch(1);
+        CountDownLatch batchFlushLatch2 = new CountDownLatch(1);
+
+        when(connection.dispatch((RedisCommand<Object, Object, Object>) any())).thenAnswer(invocation -> {
+            batchFlushLatch1.countDown();
+            batchFlushLatch2.await();
+
+            return null;
+        });
+
+        SimpleBatcher batcher = new SimpleBatcher(connection, 4);
+
+        Thread batchThread1 = new Thread(() -> {
+            batcher.batch(c1, CommandBatching.flush());
+        });
+        batchThread1.start();
+
+        Thread batchThread2 = new Thread(() -> {
+            try {
+                batchFlushLatch1.await();
+            } catch (InterruptedException ignored) {
+            }
+            batcher.batch(c2, CommandBatching.flush());
+            batchFlushLatch2.countDown();
+        });
+        batchThread2.start();
+
+        batchThread1.join();
+        batchThread2.join();
+        verify(connection, times(1)).dispatch(c1);
+        verify(connection, times(1)).dispatch(c2);
+    }
+
     private static RedisCommand<Object, Object, Object> createCommand() {
         return new AsyncCommand<>(new Command<>(CommandType.COMMAND, null, null));
     }
+
 }

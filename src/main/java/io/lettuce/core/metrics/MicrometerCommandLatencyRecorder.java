@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -22,6 +26,7 @@ import java.util.concurrent.TimeUnit;
 
 import io.lettuce.core.internal.LettuceAssert;
 import io.lettuce.core.protocol.ProtocolKeyword;
+import io.lettuce.core.protocol.RedisCommand;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import io.netty.channel.local.LocalAddress;
@@ -68,14 +73,23 @@ public class MicrometerCommandLatencyRecorder implements CommandLatencyRecorder 
     }
 
     @Override
-    public void recordCommandLatency(SocketAddress local, SocketAddress remote, ProtocolKeyword protocolKeyword,
+    public void recordCommandLatency(SocketAddress local, SocketAddress remote, RedisCommand<?, ?, ?> redisCommand,
+            long firstResponseLatency, long completionLatency) {
+
+        if (isEnabled() && isCommandEnabled(redisCommand)) {
+            recordCommandLatency(local, remote, redisCommand.getType(), firstResponseLatency, completionLatency);
+        }
+    }
+
+    @Override
+    public void recordCommandLatency(SocketAddress local, SocketAddress remote, ProtocolKeyword commandType,
             long firstResponseLatency, long completionLatency) {
 
         if (!isEnabled()) {
             return;
         }
 
-        CommandLatencyId commandLatencyId = createId(local, remote, protocolKeyword);
+        CommandLatencyId commandLatencyId = createId(local, remote, commandType);
 
         Timer firstResponseTimer = firstResponseTimers.computeIfAbsent(commandLatencyId, this::firstResponseTimer);
         firstResponseTimer.record(firstResponseLatency, TimeUnit.NANOSECONDS);
@@ -89,6 +103,10 @@ public class MicrometerCommandLatencyRecorder implements CommandLatencyRecorder 
         return options.isEnabled();
     }
 
+    private boolean isCommandEnabled(RedisCommand<?, ?, ?> redisCommand) {
+        return options.getMetricsFilter().test(redisCommand);
+    }
+
     private CommandLatencyId createId(SocketAddress local, SocketAddress remote, ProtocolKeyword commandType) {
         return CommandLatencyId.create(options.localDistinction() ? local : LocalAddress.ANY, remote, commandType);
     }
@@ -97,7 +115,7 @@ public class MicrometerCommandLatencyRecorder implements CommandLatencyRecorder 
 
         Timer.Builder timer = Timer.builder(METRIC_COMPLETION)
                 .description("Latency between command send and command completion (complete response received")
-                .tag(LABEL_COMMAND, commandLatencyId.commandType().name())
+                .tag(LABEL_COMMAND, commandLatencyId.commandType().toString())
                 .tag(LABEL_LOCAL, commandLatencyId.localAddress().toString())
                 .tag(LABEL_REMOTE, commandLatencyId.remoteAddress().toString()).tags(options.tags());
 
@@ -113,7 +131,7 @@ public class MicrometerCommandLatencyRecorder implements CommandLatencyRecorder 
 
         Timer.Builder timer = Timer.builder(METRIC_FIRST_RESPONSE)
                 .description("Latency between command send and first response (first response received)")
-                .tag(LABEL_COMMAND, commandLatencyId.commandType().name())
+                .tag(LABEL_COMMAND, commandLatencyId.commandType().toString())
                 .tag(LABEL_LOCAL, commandLatencyId.localAddress().toString())
                 .tag(LABEL_REMOTE, commandLatencyId.remoteAddress().toString()).tags(options.tags());
 

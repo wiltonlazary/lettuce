@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -41,7 +45,7 @@ import io.lettuce.core.resource.ClientResources;
  * @since 6.1
  */
 @SuppressWarnings("unchecked")
-public class CommandListenerWriter implements RedisChannelWriter {
+public class CommandListenerWriter implements RedisChannelWriter, Delegating<RedisChannelWriter> {
 
     private final RedisChannelWriter delegate;
 
@@ -106,12 +110,6 @@ public class CommandListenerWriter implements RedisChannelWriter {
     }
 
     @Override
-    @SuppressWarnings("deprecation")
-    public void reset() {
-        delegate.reset();
-    }
-
-    @Override
     public void setConnectionFacade(ConnectionFacade connection) {
         delegate.setConnectionFacade(connection);
     }
@@ -156,9 +154,7 @@ public class CommandListenerWriter implements RedisChannelWriter {
         }
 
         @Override
-        public void complete() {
-            super.complete();
-
+        protected void doOnComplete() {
             if (getOutput().hasError()) {
 
                 CommandFailedEvent failedEvent = new CommandFailedEvent((RedisCommand<Object, Object, Object>) command, context,
@@ -173,20 +169,15 @@ public class CommandListenerWriter implements RedisChannelWriter {
         }
 
         @Override
-        public void cancel() {
-            super.cancel();
-        }
-
-        @Override
-        public boolean completeExceptionally(Throwable throwable) {
-
-            boolean state = super.completeExceptionally(throwable);
-
+        protected void doOnError(Throwable throwable) {
             CommandFailedEvent failedEvent = new CommandFailedEvent((RedisCommand<Object, Object, Object>) command, context,
                     throwable);
             listener.commandFailed(failedEvent);
+        }
 
-            return state;
+        @Override
+        public void cancel() {
+            super.cancel();
         }
 
     }

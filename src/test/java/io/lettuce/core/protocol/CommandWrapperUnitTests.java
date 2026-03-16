@@ -1,26 +1,13 @@
-/*
- * Copyright 2017-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.protocol;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
 
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import io.lettuce.core.codec.RedisCodec;
@@ -33,9 +20,11 @@ import io.lettuce.core.output.StatusOutput;
  *
  * @author Mark Paluch
  */
+@Tag(UNIT_TEST)
 class CommandWrapperUnitTests {
 
     private RedisCodec<String, String> codec = StringCodec.UTF8;
+
     private Command<String, String, String> sut;
 
     @BeforeEach
@@ -129,4 +118,5 @@ class CommandWrapperUnitTests {
 
         assertThat(counter).hasValue(1);
     }
+
 }

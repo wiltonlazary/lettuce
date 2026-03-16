@@ -1,7 +1,11 @@
 /*
- * Copyright 2017-2022 the original author or authors.
+ * Copyright 2017-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -59,7 +63,7 @@ public interface RedisScriptingCommands<K, V> {
      * Execute a Lua script server side.
      *
      * @param script Lua 5.1 script.
-     * @param type the type.
+     * @param type output type.
      * @param keys the keys.
      * @param values the values.
      * @param <T> expected return type.
@@ -71,7 +75,7 @@ public interface RedisScriptingCommands<K, V> {
      * Execute a Lua script server side.
      *
      * @param script Lua 5.1 script.
-     * @param type the type.
+     * @param type output type.
      * @param keys the keys.
      * @param values the values.
      * @param <T> expected return type.
@@ -84,7 +88,20 @@ public interface RedisScriptingCommands<K, V> {
      * This is a read-only variant of the EVAL command that cannot execute commands that modify data.
      *
      * @param script Lua 5.1 script.
-     * @param type the type.
+     * @param type output type.
+     * @param keys the keys.
+     * @param values the values.
+     * @param <T> expected return type.
+     * @return script result.
+     * @since 6.4
+     */
+    <T> T evalReadOnly(String script, ScriptOutputType type, K[] keys, V... values);
+
+    /**
+     * This is a read-only variant of the EVAL command that cannot execute commands that modify data.
+     *
+     * @param script Lua 5.1 script.
+     * @param type output type.
      * @param keys the keys.
      * @param values the values.
      * @param <T> expected return type.
@@ -97,7 +114,7 @@ public interface RedisScriptingCommands<K, V> {
      * Evaluates a script cached on the server side by its SHA1 digest.
      *
      * @param digest SHA1 of the script.
-     * @param type the type.
+     * @param type output type.
      * @param keys the keys.
      * @param <T> expected return type.
      * @return script result.
@@ -108,7 +125,7 @@ public interface RedisScriptingCommands<K, V> {
      * Execute a Lua script server side.
      *
      * @param digest SHA1 of the script.
-     * @param type the type.
+     * @param type output type.
      * @param keys the keys.
      * @param values the values.
      * @param <T> expected return type.
@@ -120,7 +137,7 @@ public interface RedisScriptingCommands<K, V> {
      * This is a read-only variant of the EVALSHA command that cannot execute commands that modify data.
      *
      * @param digest SHA1 of the script.
-     * @param type the type.
+     * @param type output type.
      * @param keys the keys.
      * @param values the values.
      * @param <T> expected return type.
@@ -197,4 +214,5 @@ public interface RedisScriptingCommands<K, V> {
      * @since 6.0
      */
     String digest(byte[] script);
+
 }

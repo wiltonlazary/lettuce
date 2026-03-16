@@ -1,0 +1,114 @@
+/*
+ * Copyright 2024, Redis Ltd. and Contributors
+ * All rights reserved.
+ *
+ * Licensed under the MIT License.
+ */
+
+package io.lettuce.core.json;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.NullNode;
+
+import java.io.IOException;
+import java.nio.ByteBuffer;
+
+/**
+ * Default implementation of the {@link JsonParser} that should fit most use cases. Utilizes the Jackson library for maintaining
+ * the JSON tree model and provides the ability to create new instances of the {@link JsonValue}, {@link JsonArray} and
+ * {@link JsonObject}.
+ *
+ * @since 6.5
+ * @author Tihomir Mateev
+ * @author Steffen Kreutz
+ */
+public class DefaultJsonParser implements JsonParser {
+
+    private final ObjectMapper objectMapper;
+
+    /**
+     * Create a new instance of the {@link DefaultJsonParser} initialing a {@link ObjectMapper} with defaults.
+     */
+    public DefaultJsonParser() {
+        objectMapper = new ObjectMapper();
+    }
+
+    /**
+     * Create a new instance of the {@link DefaultJsonParser} using the provided {@link ObjectMapper}.
+     *
+     * @param objectMapper the {@link ObjectMapper} to use
+     */
+    public DefaultJsonParser(ObjectMapper objectMapper) {
+        if (objectMapper == null) {
+            throw new IllegalArgumentException("ObjectMapper must not be null");
+        }
+        this.objectMapper = objectMapper;
+    }
+
+    @Override
+    public JsonValue loadJsonValue(ByteBuffer bytes) {
+        return new UnproccessedJsonValue(bytes, this);
+    }
+
+    @Override
+    public JsonValue createJsonValue(ByteBuffer bytes) {
+        return parse(bytes);
+    }
+
+    @Override
+    public JsonValue createJsonValue(String value) {
+        return parse(value);
+    }
+
+    @Override
+    public JsonObject createJsonObject() {
+        return new DelegateJsonObject(objectMapper);
+    }
+
+    @Override
+    public JsonArray createJsonArray() {
+        return new DelegateJsonArray(objectMapper);
+    }
+
+    @Override
+    public JsonValue fromObject(Object object) {
+        try {
+            JsonNode root = objectMapper.valueToTree(object);
+            return DelegateJsonValue.wrap(root, objectMapper);
+        } catch (IllegalArgumentException e) {
+            throw new RedisJsonException("Failed to process the provided object as JSON", e);
+        }
+    }
+
+    private JsonValue parse(String value) {
+        if (value == null) {
+            return DelegateJsonValue.wrap(NullNode.getInstance(), objectMapper);
+        }
+
+        try {
+            JsonNode root = objectMapper.readTree(value);
+            return DelegateJsonValue.wrap(root, objectMapper);
+        } catch (JsonProcessingException e) {
+            throw new RedisJsonException(
+                    "Failed to process the provided value as JSON: " + String.format("%.50s", value) + "...", e);
+        }
+    }
+
+    private JsonValue parse(ByteBuffer byteBuffer) {
+        if (byteBuffer == null) {
+            return DelegateJsonValue.wrap(NullNode.getInstance(), objectMapper);
+        }
+
+        try {
+            byte[] bytes = new byte[byteBuffer.remaining()];
+            byteBuffer.get(bytes);
+            JsonNode root = objectMapper.readTree(bytes);
+            return DelegateJsonValue.wrap(root, objectMapper);
+        } catch (IOException e) {
+            throw new RedisJsonException("Failed to process the provided value as JSON", e);
+        }
+    }
+
+}

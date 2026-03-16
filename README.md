@@ -1,7 +1,19 @@
 <img src="https://avatars2.githubusercontent.com/u/25752188?v=4" width="50" height="50"> Lettuce - Advanced Java Redis client
 ===============================
 
- [![Maven Central](https://maven-badges.herokuapp.com/maven-central/io.lettuce/lettuce-core/badge.svg)](https://maven-badges.herokuapp.com/maven-central/io.lettuce/lettuce-core)
+ [![Integration](https://github.com/redis/lettuce/actions/workflows/integration.yml/badge.svg?branch=main)](https://github.com/redis/lettuce/actions/workflows/integration.yml)
+ [![codecov](https://codecov.io/gh/redis/lettuce/branch/main/graph/badge.svg?token=pAstxAAjYo)](https://codecov.io/gh/redis/lettuce)
+ [![MIT licensed](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE.txt)
+ [![Maven Central](https://img.shields.io/maven-central/v/io.lettuce/lettuce-core?versionSuffix=RELEASE&logo=redis
+ )](https://maven-badges.herokuapp.com/maven-central/io.lettuce/lettuce-core)
+ [![Javadocs](https://www.javadoc.io/badge/io.lettuce/lettuce-core.svg)](https://www.javadoc.io/doc/io.lettuce/lettuce-core)
+
+[![Discord](https://img.shields.io/discord/697882427875393627.svg?style=social&logo=discord)](https://discord.gg/redis)
+[![Twitch](https://img.shields.io/twitch/status/redisinc?style=social)](https://www.twitch.tv/redisinc)
+[![YouTube](https://img.shields.io/youtube/channel/views/UCD78lHSwYqMlyetR0_P4Vig?style=social)](https://www.youtube.com/redisinc)
+[![Twitter](https://img.shields.io/twitter/follow/redisinc?style=social)](https://twitter.com/redisinc)
+[![Stack Exchange questions](https://img.shields.io/stackexchange/stackoverflow/t/lettuce?style=social&logo=stackoverflow&label=Stackoverflow)](https://stackoverflow.com/questions/tagged/lettuce)
+
 
 Lettuce is a scalable thread-safe Redis client for synchronous,
 asynchronous and reactive usage. Multiple threads may share one connection if they avoid blocking and transactional
@@ -11,44 +23,43 @@ Supports advanced Redis features such as Sentinel, Cluster, Pipelining, Auto-Rec
 
 This version of Lettuce has been tested against the latest Redis source-build.
 
-* [synchronous](https://github.com/lettuce-io/lettuce-core/wiki/Basic-usage), [asynchronous](https://github.com/lettuce-io/lettuce-core/wiki/Asynchronous-API-%284.0%29) and [reactive](https://github.com/lettuce-io/lettuce-core/wiki/Reactive-API-%285.0%29) usage
-* [Redis Sentinel](https://github.com/lettuce-io/lettuce-core/wiki/Redis-Sentinel)
-* [Redis Cluster](https://github.com/lettuce-io/lettuce-core/wiki/Redis-Cluster)
-* [SSL](https://github.com/lettuce-io/lettuce-core/wiki/SSL-Connections) and [Unix Domain Socket](https://github.com/lettuce-io/lettuce-core/wiki/Unix-Domain-Sockets) connections
-* [Streaming API](https://github.com/lettuce-io/lettuce-core/wiki/Streaming-API)
-* [CDI](https://github.com/lettuce-io/lettuce-core/wiki/CDI-Support) and [Spring](https://github.com/lettuce-io/lettuce-core/wiki/Spring-Support) integration
-* [Codecs](https://github.com/lettuce-io/lettuce-core/wiki/Codecs) (for UTF8/bit/JSON etc. representation of your data)
-* multiple [Command Interfaces](https://github.com/lettuce-io/lettuce-core/wiki/Command-Interfaces-%284.0%29)
-* Support for [Native Transports](https://github.com/lettuce-io/lettuce-core/wiki/Native-Transports)
+* [synchronous](https://redis.github.io/lettuce/user-guide/connecting-redis/#basic-usage), [asynchronous](https://redis.github.io/lettuce/user-guide/async-api/) and [reactive](https://redis.github.io/lettuce/user-guide/reactive-api/) usage
+* [Redis Sentinel](https://redis.github.io/lettuce/ha-sharding/#redis-sentinel_1)
+* [Redis Cluster](https://redis.github.io/lettuce/ha-sharding/#redis-cluster)
+* [SSL](https://redis.github.io/lettuce/advanced-usage/#ssl-connections) and [Unix Domain Socket](https://redis.github.io/lettuce/advanced-usage/#unix-domain-sockets) connections
+* [Streaming API](https://redis.github.io/lettuce/advanced-usage/#streaming-api)
+* [Codecs](https://redis.github.io/lettuce/integration-extension/#codecss) (for UTF8/bit/JSON etc. representation of your data)
+* multiple [Command Interfaces](https://github.com/redis/lettuce/wiki/Command-Interfaces-%284.0%29)
+* Support for [Native Transports](https://redis.github.io/lettuce/advanced-usage/#native-transports)
+* Support [RediSearch](https://redis.github.io/lettuce/user-guide/redis-search/), [RedisJSON](https://redis.github.io/lettuce/user-guide/redis-json/) and [Redis Vector Sets](https://redis.github.io/lettuce/user-guide/vector-sets/)
 * Compatible with Java 8++ (implicit automatic module w/o descriptors)
 
-See the [reference documentation](https://lettuce.io/docs/) and [Wiki](https://github.com/lettuce-io/lettuce-core/wiki) for more details.
+See the [reference documentation](https://redis.github.io/lettuce/) and [API Reference](https://www.javadoc.io/doc/io.lettuce/lettuce-core/latest/index.html) for more details.
 
+## How do I Redis?
 
-Communication
----------------
+[Learn for free at Redis University](https://university.redis.io/academy)
 
-* [GitHub Discussions](https://github.com/lettuce-io/lettuce-core/discussions) (Q&A, Ideas, General discussion)
-* Stack Overflow (Questions): [https://stackoverflow.com/questions/tagged/lettuce](https://stackoverflow.com/questions/tagged/lettuce)
-* Gitter (chat): [![Join the chat at https://gitter.im/lettuce-io/Lobby](https://badges.gitter.im/Join%20Chat.svg)](https://gitter.im/lettuce-io/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-* Twitter: [@LettuceDriver](https://twitter.com/LettuceDriver)
-* [GitHub Issues](https://github.com/lettuce-io/lettuce-core/issues) (Bug reports, feature requests)
+[Try the Redis Cloud](https://redis.io/try-free/)
 
+[Dive in developer tutorials](https://redis.io/learn/)
+
+[Join the Redis community](https://redis.io/community/)
+
+[Work at Redis](https://redis.io/careers/jobs/)
 
 Documentation
 ---------------
 
-* [Reference documentation](https://lettuce.io/docs/)
-* [Wiki](https://github.com/lettuce-io/lettuce-core/wiki)
-* [Javadoc](https://lettuce.io/core/release/api/)
-
+* [Reference documentation](https://redis.github.io/lettuce/)
+* [Javadoc](https://www.javadoc.io/doc/io.lettuce/lettuce-core/latest/index.html)
 
 Binaries/Download
 ----------------
 
 Binaries and dependency information for Maven, Ivy, Gradle and others can be found at http://search.maven.org.
 
-Releases of lettuce are available in the Maven Central repository. Take also a look at the [Releases](https://github.com/lettuce-io/lettuce-core/releases).
+Releases of lettuce are available in the Maven Central repository. Take also a look at the [Releases](https://github.com/redis/lettuce/releases).
 
 Example for Maven:
 
@@ -96,7 +107,7 @@ to the lowercase Redis command name. Complex commands with multiple modifiers
 that change the result type include the CamelCased modifier as part of the
 command name, e.g. zrangebyscore and zrangebyscoreWithScores.
 
-See [Basic usage](https://github.com/lettuce-io/lettuce-core/wiki/Basic-usage) for further details.
+See [Basic usage](https://redis.github.io/lettuce/user-guide/connecting-redis/#basic-usage) for further details.
 
 Asynchronous API
 ------------------------
@@ -104,16 +115,16 @@ Asynchronous API
 ```java
 StatefulRedisConnection<String, String> connection = client.connect();
 RedisStringAsyncCommands<String, String> async = connection.async();
-RedisFuture<String> set = async.set("key", "value")
-RedisFuture<String> get = async.get("key")
+RedisFuture<String> set = async.set("key", "value");
+RedisFuture<String> get = async.get("key");
 
-async.awaitAll(set, get) == true
+LettuceFutures.awaitAll(set, get) == true
 
 set.get() == "OK"
 get.get() == "value"
 ```
 
-See [Asynchronous API](https://github.com/lettuce-io/lettuce-core/wiki/Asynchronous-API-%284.0%29) for further details.
+See [Asynchronous API](https://redis.github.io/lettuce/user-guide/async-api/) for further details.
 
 Reactive API
 ------------------------
@@ -129,7 +140,7 @@ set.subscribe();
 get.block() == "value"
 ```
 
-See [Reactive API](https://github.com/lettuce-io/lettuce-core/wiki/Reactive-API-%285.0%29) for further details.
+See [Reactive API](https://redis.github.io/lettuce/user-guide/reactive-api/) for further details.
 
 Pub/Sub
 -------
@@ -137,56 +148,41 @@ Pub/Sub
 ```java
 RedisPubSubCommands<String, String> connection = client.connectPubSub().sync();
 connection.getStatefulConnection().addListener(new RedisPubSubListener<String, String>() { ... })
-connection.subscribe("channel")
+connection.subscribe("channel");
 ```
-
-Cloud Provider Compatibility
-----------------------------
-
-While we're not actively testing Lettuce against various cloud offerings, we've verified initial compatibility with the following services (or have seen folks using Lettuce there):
-
-* AWS Elasticache (Operated in replica- and Redis Cluster mode)
-* Azure Redis
-* IBM Cloud Databases for Redis
-* Google Cloud Memorystore for Redis
-* RedisLabs Enterprise Redis Cluster
-
-Note: Some providers operate Redis in non-standard modes that aren't fully supported by Lettuce. 
 
 Building
 -----------
 
 Lettuce is built with Apache Maven. The tests require multiple running Redis instances for different test cases which
-are configured using a ```Makefile```. Tests run by default against Redis `unstable`.
+are configured using a ```Makefile```. Tests run by default against Redis `latest`.
 
 To build:
 
 ```
-$ git clone https://github.com/lettuce-io/lettuce-core.git
+$ git clone https://github.com/redis/lettuce.git
 $ cd lettuce/
-$ make prepare ssl-keys
-$ make test
+$ make start
 ```
 
-* Initial environment setup (clone and build `redis`): ```make prepare```
-* Setup SSL Keys: ```make ssl-keys```
 * Run the build: ```make test```
 * Start Redis (manually): ```make start```
 * Stop Redis (manually): ```make stop```
+* Clean up: ```make clean```
 
 Bugs and Feedback
 -----------
 
-For bugs, questions and discussions please use the [GitHub Issues](https://github.com/lettuce-io/lettuce-core/issues).
+For bugs, questions and discussions please use the [GitHub Issues](https://github.com/redis/lettuce/issues).
 
 License
 -------
 
-* [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+* This repository is licensed under the "MIT" license. See [LICENSE](LICENSE).
 * Fork of https://github.com/wg/lettuce
 
 Contributing
 -------
 
 Github is for social coding: if you want to write code, I encourage contributions through pull requests from forks of this repository. 
-Create Github tickets for bugs and new features and comment on the ones that you are interested in and take a look into [CONTRIBUTING.md](https://github.com/lettuce-io/lettuce-core/blob/main/.github/CONTRIBUTING.md)
+Create Github tickets for bugs and new features and comment on the ones that you are interested in and take a look into [CONTRIBUTING.md](https://github.com/redis/lettuce/blob/main/.github/CONTRIBUTING.md)

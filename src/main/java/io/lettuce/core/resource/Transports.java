@@ -1,18 +1,3 @@
-/*
- * Copyright 2020-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.resource;
 
 import io.lettuce.core.internal.LettuceAssert;
@@ -22,6 +7,8 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.DatagramChannel;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
+import io.netty.util.internal.logging.InternalLogger;
+import io.netty.util.internal.logging.InternalLoggerFactory;
 
 /**
  * Transport infrastructure utility class. This class provides {@link EventLoopGroup} and {@link Channel} classes for TCP socket
@@ -42,7 +29,7 @@ public class Transports {
             return NativeTransports.eventLoopGroupClass();
         }
 
-        return NioEventLoopGroup.class;
+        return NioProvider.getResources().eventLoopGroupClass();
     }
 
     /**
@@ -68,18 +55,25 @@ public class Transports {
 
         return NioDatagramChannel.class;
     }
+
     /**
      * Native transport support.
      */
     public static class NativeTransports {
 
-        static EventLoopResources RESOURCES = KqueueProvider.isAvailable() ? KqueueProvider.getResources()
-                : IOUringProvider.isAvailable() ? IOUringProvider.getResources() : EpollProvider.getResources();
+        private static final InternalLogger transportsLogger = InternalLoggerFactory.getInstance(Transports.class);
+
+        // Priority order must match DefaultEventLoopGroupProvider: Epoll > Kqueue > IOUring
+        static EventLoopResources RESOURCES = EpollProvider.isAvailable() ? EpollProvider.getResources()
+                : KqueueProvider.isAvailable() ? KqueueProvider.getResources() : IOUringProvider.getResources();
 
         /**
          * @return {@code true} if a native transport is available.
          */
         static boolean isAvailable() {
+            if (EpollProvider.isAvailable() && IOUringProvider.isAvailable()) {
+                transportsLogger.warn("Both epoll and io_uring native transports are available, epoll has been prioritized.");
+            }
             return EpollProvider.isAvailable() || KqueueProvider.isAvailable() || IOUringProvider.isAvailable();
         }
 
@@ -109,14 +103,29 @@ public class Transports {
          */
         public static Class<? extends Channel> domainSocketChannelClass() {
             assertDomainSocketAvailable();
-            return RESOURCES.domainSocketChannelClass();
+            return EpollProvider.isAvailable() && IOUringProvider.isAvailable()
+                    ? EpollProvider.getResources().domainSocketChannelClass()
+                    : RESOURCES.domainSocketChannelClass();
+        }
+
+        /**
+         * @return the native transport {@link EventLoopGroup} class. Defaults to TCP sockets. See
+         *         {@link #eventLoopGroupClass(boolean)} to request a specific EventLoopGroup for Domain Socket usage.
+         */
+        public static Class<? extends EventLoopGroup> eventLoopGroupClass() {
+            return eventLoopGroupClass(false);
         }
 
         /**
          * @return the native transport {@link EventLoopGroup} class.
+         * @param domainSocket {@code true} to indicate Unix Domain Socket usage, {@code false} otherwise.
+         * @since 6.3.3
          */
-        public static Class<? extends EventLoopGroup> eventLoopGroupClass() {
-            return RESOURCES.eventLoopGroupClass();
+        public static Class<? extends EventLoopGroup> eventLoopGroupClass(boolean domainSocket) {
+
+            return domainSocket && EpollProvider.isAvailable() && IOUringProvider.isAvailable()
+                    ? EpollProvider.getResources().eventLoopGroupClass()
+                    : RESOURCES.eventLoopGroupClass();
         }
 
         public static void assertDomainSocketAvailable() {

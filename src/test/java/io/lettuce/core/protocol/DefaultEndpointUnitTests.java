@@ -1,20 +1,6 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.protocol;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -38,6 +24,7 @@ import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -65,6 +52,7 @@ import io.netty.util.concurrent.ImmediateEventExecutor;
 /**
  * @author Mark Paluch
  */
+@Tag(UNIT_TEST)
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class DefaultEndpointUnitTests {
@@ -134,6 +122,34 @@ class DefaultEndpointUnitTests {
 
         sut = new DefaultEndpoint(ClientOptions.create(), clientResources);
         sut.setConnectionFacade(connectionFacade);
+    }
+
+    @Test
+    void writeShouldGuaranteeFIFOOrder() {
+        sut.write(Collections.singletonList(new Command<>(CommandType.SELECT, new StatusOutput<>(StringCodec.UTF8))));
+
+        sut.registerConnectionWatchdog(connectionWatchdog);
+        doAnswer(i -> sut.write(new Command<>(CommandType.AUTH, new StatusOutput<>(StringCodec.UTF8)))).when(connectionWatchdog)
+                .arm();
+        when(channel.isActive()).thenReturn(true);
+
+        sut.notifyChannelActive(channel);
+
+        DefaultChannelPromise promise = new DefaultChannelPromise(channel, ImmediateEventExecutor.INSTANCE);
+
+        when(channel.writeAndFlush(any())).thenAnswer(invocation -> {
+            if (invocation.getArguments()[0] instanceof RedisCommand) {
+                queue.add((RedisCommand) invocation.getArguments()[0]);
+            }
+
+            if (invocation.getArguments()[0] instanceof Collection) {
+                queue.addAll((Collection) invocation.getArguments()[0]);
+            }
+            return promise;
+        });
+
+        assertThat(queue).hasSize(2).first().hasFieldOrPropertyWithValue("type", CommandType.SELECT);
+        assertThat(queue).hasSize(2).last().hasFieldOrPropertyWithValue("type", CommandType.AUTH);
     }
 
     @Test
@@ -388,17 +404,17 @@ class DefaultEndpointUnitTests {
             return promise;
         });
 
-        assertThat(queue).hasSize(2).hasOnlyElementsOfTypes(DefaultEndpoint.ActivationCommand.class);
+        assertThat(queue).hasSize(2).hasOnlyElementsOfTypes(ActivationCommand.class);
     }
 
     @Test
     void shouldNotReplayActivationCommands() {
 
         when(channel.isActive()).thenReturn(true);
-        ConnectionTestUtil.getDisconnectedBuffer(sut).add(new DefaultEndpoint.ActivationCommand<>(
-                new Command<>(CommandType.SELECT, new StatusOutput<>(StringCodec.UTF8))));
-        ConnectionTestUtil.getDisconnectedBuffer(sut).add(new LatencyMeteredCommand<>(new DefaultEndpoint.ActivationCommand<>(
-                new Command<>(CommandType.SUBSCRIBE, new StatusOutput<>(StringCodec.UTF8)))));
+        ConnectionTestUtil.getDisconnectedBuffer(sut)
+                .add(new ActivationCommand<>(new Command<>(CommandType.SELECT, new StatusOutput<>(StringCodec.UTF8))));
+        ConnectionTestUtil.getDisconnectedBuffer(sut).add(new LatencyMeteredCommand<>(
+                new ActivationCommand<>(new Command<>(CommandType.SUBSCRIBE, new StatusOutput<>(StringCodec.UTF8)))));
 
         doAnswer(i -> {
 

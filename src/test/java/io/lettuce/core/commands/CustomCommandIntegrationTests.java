@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core.commands;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.*;
 
@@ -23,6 +28,7 @@ import java.util.Arrays;
 import javax.inject.Inject;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,6 +55,7 @@ import io.lettuce.test.TestFutures;
  *
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class CustomCommandIntegrationTests extends TestSupport {
@@ -68,8 +75,8 @@ public class CustomCommandIntegrationTests extends TestSupport {
     @Test
     void dispatchSet() {
 
-        String response = redis.dispatch(MyCommands.SET, new StatusOutput<>(StringCodec.UTF8), new CommandArgs<>(
-                StringCodec.UTF8).addKey(key).addValue(value));
+        String response = redis.dispatch(MyCommands.SET, new StatusOutput<>(StringCodec.UTF8),
+                new CommandArgs<>(StringCodec.UTF8).addKey(key).addValue(value));
 
         assertThat(response).isEqualTo("OK");
     }
@@ -102,17 +109,16 @@ public class CustomCommandIntegrationTests extends TestSupport {
     void dispatchShouldFailForWrongDataType() {
 
         redis.hset(key, key, value);
-        assertThatThrownBy(
-                () -> redis.dispatch(CommandType.GET, new StatusOutput<>(StringCodec.UTF8),
-                        new CommandArgs<>(StringCodec.UTF8).addKey(key))).isInstanceOf(RedisCommandExecutionException.class);
+        assertThatThrownBy(() -> redis.dispatch(CommandType.GET, new StatusOutput<>(StringCodec.UTF8),
+                new CommandArgs<>(StringCodec.UTF8).addKey(key))).isInstanceOf(RedisCommandExecutionException.class);
     }
 
     @Test
     void dispatchTransactions() {
 
         redis.multi();
-        String response = redis.dispatch(CommandType.SET, new StatusOutput<>(StringCodec.UTF8), new CommandArgs<>(
-                StringCodec.UTF8).addKey(key).addValue(value));
+        String response = redis.dispatch(CommandType.SET, new StatusOutput<>(StringCodec.UTF8),
+                new CommandArgs<>(StringCodec.UTF8).addKey(key).addValue(value));
 
         TransactionResult exec = redis.exec();
 
@@ -197,6 +203,7 @@ public class CustomCommandIntegrationTests extends TestSupport {
     }
 
     public enum MyCommands implements ProtocolKeyword {
+
         PING, SET, INFO;
 
         private final byte name[];
@@ -210,5 +217,7 @@ public class CustomCommandIntegrationTests extends TestSupport {
         public byte[] getBytes() {
             return name;
         }
+
     }
+
 }

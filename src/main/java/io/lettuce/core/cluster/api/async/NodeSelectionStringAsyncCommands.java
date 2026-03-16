@@ -1,7 +1,11 @@
 /*
- * Copyright 2017-2022 the original author or authors.
+ * Copyright 2017-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -21,9 +25,11 @@ import java.util.Map;
 import io.lettuce.core.BitFieldArgs;
 import io.lettuce.core.GetExArgs;
 import io.lettuce.core.KeyValue;
+import io.lettuce.core.MSetExArgs;
 import io.lettuce.core.SetArgs;
 import io.lettuce.core.StrAlgoArgs;
 import io.lettuce.core.StringMatchResult;
+import io.lettuce.core.LcsArgs;
 import io.lettuce.core.output.KeyValueStreamingChannel;
 
 /**
@@ -179,6 +185,53 @@ public interface NodeSelectionStringAsyncCommands<K, V> {
     AsyncExecutions<Long> bitopXor(K destination, K... keys);
 
     /**
+     * Perform bitwise DIFF between strings. Members of the source key that are not members of any of the other keys. Equivalent
+     * to: X ∧ ¬(Y1 ∨ Y2 ∨ …)
+     *
+     * @param destination result key of the operation.
+     * @param sourceKey the source key (X) for comparison.
+     * @param keys one or more additional keys (Y1, Y2, ...). At least one key is required.
+     * @return Long integer-reply The size of the string stored in the destination key, that is equal to the size of the longest
+     *         input string.
+     */
+    AsyncExecutions<Long> bitopDiff(K destination, K sourceKey, K... keys);
+
+    /**
+     * Perform bitwise DIFF1 between strings. Members of one or more of the keys that are not members of the source key.
+     * Equivalent to: ¬X ∧ (Y1 ∨ Y2 ∨ …)
+     *
+     * @param destination result key of the operation.
+     * @param sourceKey the source key (X) for comparison.
+     * @param keys one or more additional keys (Y1, Y2, ...). At least one key is required.
+     * @return Long integer-reply The size of the string stored in the destination key, that is equal to the size of the longest
+     *         input string.
+     */
+    AsyncExecutions<Long> bitopDiff1(K destination, K sourceKey, K... keys);
+
+    /**
+     * Perform bitwise ANDOR between strings. Members of the source key that are also members of one or more of the other keys.
+     * Equivalent to: X ∧ (Y1 ∨ Y2 ∨ …)
+     *
+     * @param destination result key of the operation.
+     * @param sourceKey the source key (X) for comparison.
+     * @param keys one or more additional keys (Y1, Y2, ...). At least one key is required.
+     * @return Long integer-reply The size of the string stored in the destination key, that is equal to the size of the longest
+     *         input string.
+     */
+    AsyncExecutions<Long> bitopAndor(K destination, K sourceKey, K... keys);
+
+    /**
+     * Perform bitwise ONE between strings. Members of exactly one of the given keys. For two keys this is equivalent to XOR.
+     * For more than two keys, returns members that appear in exactly one key.
+     *
+     * @param destination result key of the operation.
+     * @param keys operation input key names.
+     * @return Long integer-reply The size of the string stored in the destination key, that is equal to the size of the longest
+     *         input string.
+     */
+    AsyncExecutions<Long> bitopOne(K destination, K... keys);
+
+    /**
      * Decrement the integer value of a key by one.
      *
      * @param key the key.
@@ -312,6 +365,17 @@ public interface NodeSelectionStringAsyncCommands<K, V> {
     AsyncExecutions<Boolean> msetnx(Map<K, V> map);
 
     /**
+     * Set multiple keys to multiple values with optional conditions and expiration. Emits: numkeys, pairs, then [NX|XX] and one
+     * of [EX|PX|EXAT|PXAT|KEEPTTL].
+     *
+     * @param map the map of keys and values.
+     * @param args the {@link MSetExArgs} specifying NX/XX and expiration.
+     * @return Boolean from integer-reply: {@code 1} if all keys were set, {@code 0} otherwise.
+     * @since 7.1
+     */
+    AsyncExecutions<Boolean> msetex(Map<K, V> map, MSetExArgs args);
+
+    /**
      * Set the string value of a key.
      *
      * @param key the key.
@@ -405,6 +469,8 @@ public interface NodeSelectionStringAsyncCommands<K, V> {
     /**
      * The STRALGO command implements complex algorithms that operate on strings. This method uses the LCS algorithm (longest
      * common substring).
+     * <p>
+     * Command is no longer available in Redis server versions 7.0.x and later.
      *
      * <ul>
      * <li>Without modifiers the string representing the longest common substring is returned.</li>
@@ -417,9 +483,29 @@ public interface NodeSelectionStringAsyncCommands<K, V> {
      *
      * @param strAlgoArgs command arguments.
      * @return StringMatchResult.
+     * @deprecated since 6.6 in favor of {@link #lcs(LcsArgs)}.
      * @since 6.0
      */
+    @Deprecated
     AsyncExecutions<StringMatchResult> stralgoLcs(StrAlgoArgs strAlgoArgs);
+
+    /**
+     * The LCS command implements the longest common subsequence algorithm.
+     *
+     * <ul>
+     * <li>Without modifiers, the string representing the longest common substring is returned.</li>
+     * <li>When {@link LcsArgs#justLen() LEN} is given the command returns the length of the longest common substring.</li>
+     * <li>When {@link LcsArgs#withIdx() IDX} is given the command returns an array with the LCS length and all the ranges in
+     * both the strings, start and end offset for each string, where there are matches. When {@link LcsArgs#withMatchLen()
+     * WITHMATCHLEN} is given each array representing a match will also have the length of the match.</li>
+     * </ul>
+     *
+     * @param lcsArgs command arguments supplied by the {@link LcsArgs}.
+     * @return StringMatchResult
+     * @see <a href="https://redis.io/commands/lcs">LCS command refference</a>
+     * @since 6.6
+     */
+    AsyncExecutions<StringMatchResult> lcs(LcsArgs lcsArgs);
 
     /**
      * Get the length of the value stored in a key.
@@ -428,4 +514,5 @@ public interface NodeSelectionStringAsyncCommands<K, V> {
      * @return Long integer-reply the length of the string at {@code key}, or {@code 0} when {@code key} does not exist.
      */
     AsyncExecutions<Long> strlen(K key);
+
 }

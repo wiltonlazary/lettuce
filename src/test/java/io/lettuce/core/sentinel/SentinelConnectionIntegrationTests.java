@@ -1,20 +1,6 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.sentinel;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
@@ -26,6 +12,7 @@ import javax.inject.Inject;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -43,12 +30,16 @@ import io.lettuce.test.settings.TestSettings;
 /**
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 public class SentinelConnectionIntegrationTests extends TestSupport {
 
     private final RedisClient redisClient;
+
     private StatefulRedisSentinelConnection<String, String> connection;
+
     private RedisSentinelCommands<String, String> sentinel;
+
     private RedisSentinelAsyncCommands<String, String> sentinelAsync;
 
     @Inject
@@ -64,7 +55,8 @@ public class SentinelConnectionIntegrationTests extends TestSupport {
         this.sentinelAsync = this.connection.async();
     }
 
-    protected RedisSentinelCommands<String, String> getSyncConnection(StatefulRedisSentinelConnection<String, String> connection) {
+    protected RedisSentinelCommands<String, String> getSyncConnection(
+            StatefulRedisSentinelConnection<String, String> connection) {
         return connection.sync();
     }
 
@@ -123,29 +115,6 @@ public class SentinelConnectionIntegrationTests extends TestSupport {
     }
 
     @Test
-    void testSyncClose() {
-
-        StatefulRedisSentinelConnection<String, String> statefulConnection = sentinel.getStatefulConnection();
-        statefulConnection.sync().getStatefulConnection().close();
-
-        Wait.untilTrue(() -> !sentinel.isOpen()).waitOrTimeout();
-
-        assertThat(sentinel.isOpen()).isFalse();
-        assertThat(statefulConnection.isOpen()).isFalse();
-    }
-
-    @Test
-    void testAsyncClose() {
-        StatefulRedisSentinelConnection<String, String> statefulConnection = sentinel.getStatefulConnection();
-        statefulConnection.async().getStatefulConnection().close();
-
-        Wait.untilTrue(() -> !sentinel.isOpen()).waitOrTimeout();
-
-        assertThat(sentinel.isOpen()).isFalse();
-        assertThat(statefulConnection.isOpen()).isFalse();
-    }
-
-    @Test
     void connectToOneNode() {
         RedisSentinelCommands<String, String> connection = redisClient.connectSentinel(SentinelTestSettings.SENTINEL_URI)
                 .sync();
@@ -155,8 +124,8 @@ public class SentinelConnectionIntegrationTests extends TestSupport {
 
     @Test
     void connectWithByteCodec() {
-        RedisSentinelCommands<byte[], byte[]> connection = redisClient.connectSentinel(new ByteArrayCodec(),
-                SentinelTestSettings.SENTINEL_URI).sync();
+        RedisSentinelCommands<byte[], byte[]> connection = redisClient
+                .connectSentinel(new ByteArrayCodec(), SentinelTestSettings.SENTINEL_URI).sync();
         assertThat(connection.master(SentinelTestSettings.MASTER_ID.getBytes())).isNotNull();
         connection.getStatefulConnection().close();
     }
@@ -209,8 +178,8 @@ public class SentinelConnectionIntegrationTests extends TestSupport {
     @Test
     void sentinelWithAuthentication() {
 
-        RedisURI redisURI = RedisURI.Builder.sentinel(TestSettings.host(), 26381, SentinelTestSettings.MASTER_ID, "foobared")
-                .withClientName("my-client").build();
+        RedisURI redisURI = RedisURI.Builder.sentinel(TestSettings.host(), 26381, SentinelTestSettings.MASTER_ID)
+                .withPassword("foobared".toCharArray()).withClientName("my-client").build();
 
         redisClient.setOptions(ClientOptions.builder().pingBeforeActivateConnection(true).build());
         StatefulRedisConnection<String, String> connection = redisClient.connect(redisURI);

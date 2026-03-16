@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -18,6 +22,7 @@ package io.lettuce.core.api.async;
 import io.lettuce.core.RedisFuture;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.cluster.api.async.RedisClusterAsyncCommands;
+import io.lettuce.core.json.JsonParser;
 
 /**
  * A complete asynchronous and thread-safe Redis API with 400+ Methods.
@@ -25,13 +30,16 @@ import io.lettuce.core.cluster.api.async.RedisClusterAsyncCommands;
  * @param <K> Key type.
  * @param <V> Value type.
  * @author Mark Paluch
+ * @author Tihomir Mateev
  * @since 3.0
  */
-public interface RedisAsyncCommands<K, V> extends BaseRedisAsyncCommands<K, V>, RedisAclAsyncCommands<K, V>, RedisClusterAsyncCommands<K, V>,
-        RedisGeoAsyncCommands<K, V>, RedisHashAsyncCommands<K, V>, RedisHLLAsyncCommands<K, V>, RedisKeyAsyncCommands<K, V>,
-        RedisListAsyncCommands<K, V>, RedisScriptingAsyncCommands<K, V>, RedisServerAsyncCommands<K, V>,
-        RedisSetAsyncCommands<K, V>, RedisSortedSetAsyncCommands<K, V>, RedisStreamAsyncCommands<K, V>,
-        RedisStringAsyncCommands<K, V>, RedisTransactionalAsyncCommands<K, V> {
+public interface RedisAsyncCommands<K, V> extends BaseRedisAsyncCommands<K, V>, RedisAclAsyncCommands<K, V>,
+        RedisClusterAsyncCommands<K, V>, RedisFunctionAsyncCommands<K, V>, RedisGeoAsyncCommands<K, V>,
+        RedisHashAsyncCommands<K, V>, RedisHLLAsyncCommands<K, V>, RedisKeyAsyncCommands<K, V>, RedisListAsyncCommands<K, V>,
+        RedisScriptingAsyncCommands<K, V>, RedisServerAsyncCommands<K, V>, RedisSetAsyncCommands<K, V>,
+        RedisSortedSetAsyncCommands<K, V>, RedisStreamAsyncCommands<K, V>, RedisStringAsyncCommands<K, V>,
+        RedisTransactionalAsyncCommands<K, V>, RedisJsonAsyncCommands<K, V>, RedisVectorSetAsyncCommands<K, V>,
+        RediSearchAsyncCommands<K, V> {
 
     /**
      * Authenticate to the server.
@@ -75,5 +83,11 @@ public interface RedisAsyncCommands<K, V> extends BaseRedisAsyncCommands<K, V>, 
      */
     @Deprecated
     StatefulRedisConnection<K, V> getStatefulConnection();
+
+    /**
+     * @return the currently configured instance of the {@link JsonParser}
+     * @since 6.5
+     */
+    JsonParser getJsonParser();
 
 }

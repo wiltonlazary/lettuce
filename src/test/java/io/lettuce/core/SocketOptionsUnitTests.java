@@ -1,7 +1,11 @@
 /*
- * Copyright 2018-2022 the original author or authors.
+ * Copyright 2018-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,11 +19,14 @@
  */
 package io.lettuce.core;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
 
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
+import io.lettuce.core.SocketOptions.TcpUserTimeoutOptions;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -27,6 +34,7 @@ import org.junit.jupiter.api.Test;
  *
  * @author Mark Paluch
  */
+@Tag(UNIT_TEST)
 class SocketOptionsUnitTests {
 
     @Test
@@ -74,7 +82,7 @@ class SocketOptionsUnitTests {
 
         SocketOptions sut = SocketOptions.builder().keepAlive(SocketOptions.KeepAliveOptions.builder().build()).build();
 
-        assertThat(sut.isKeepAlive()).isFalse();
+        assertThat(sut.isKeepAlive()).isTrue();
         assertThat(sut.isExtendedKeepAlive()).isTrue();
     }
 
@@ -84,8 +92,24 @@ class SocketOptionsUnitTests {
     }
 
     void checkAssertions(SocketOptions sut) {
-        assertThat(sut.isKeepAlive()).isFalse();
+        assertThat(sut.isKeepAlive()).isTrue();
         assertThat(sut.isTcpNoDelay()).isTrue();
         assertThat(sut.getConnectTimeout()).isEqualTo(Duration.ofSeconds(10));
     }
+
+    @Test
+    void testDefaultTcpUserTimeoutOption() {
+        SocketOptions sut = SocketOptions.builder().build();
+        assertThat(sut.isEnableTcpUserTimeout()).isFalse();
+    }
+
+    @Test
+    void testConfigTcpUserTimeoutOption() {
+        SocketOptions sut = SocketOptions.builder()
+                .tcpUserTimeout(TcpUserTimeoutOptions.builder().enable().tcpUserTimeout(Duration.ofSeconds(60)).build())
+                .build();
+        assertThat(sut.isEnableTcpUserTimeout()).isTrue();
+        assertThat(sut.getTcpUserTimeout().getTcpUserTimeout()).isEqualTo(Duration.ofSeconds(60));
+    }
+
 }

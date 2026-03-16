@@ -1,0 +1,55 @@
+name: Continuous Integration
+run-name: "Continuous Integration${{ github.event.inputs.client_libs_test_image_tag != '' && format(' using image: {0}', github.event.inputs.client_libs_test_image_tag) || '' }}"
+
+on:
+  push:
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '**/*.rst'
+    branches:
+      - main
+      - '[0-9].*'
+      - 'feature/*'
+  pull_request:
+    branches:
+      - main
+      - '[0-9].*'
+      - 'feature/*'
+  schedule:
+    - cron: '0 1 * * *' # nightly build
+  workflow_dispatch:
+    inputs:
+      client_libs_test_image_tag:
+        description: 'Custom client libs test image tag to use instead of redis_version'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    name: Build and Test (Redis ${{ matrix.redis_version }})
+    if: github.event.inputs.client_libs_test_image_tag == ''
+    strategy:
+      fail-fast: false
+      matrix:
+        redis_version:
+          - "8.6"
+          - "8.4"
+          - "8.2"
+          - "8.0"
+          - "7.4"
+          - "7.2"
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      redis_version: ${{ matrix.redis_version }}
+    secrets:
+      codecov_token: ${{ secrets.CODECOV_TOKEN }}
+
+  build_using_custom_image:
+    name: Build and Test using custom image
+    if: github.event.inputs.client_libs_test_image_tag != ''
+    uses: ./.github/workflows/run-tests.yml
+    with:
+      client_libs_test_image_tag: ${{ github.event.inputs.client_libs_test_image_tag }}
+    secrets:
+      codecov_token: ${{ secrets.CODECOV_TOKEN }}

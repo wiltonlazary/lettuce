@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -16,14 +20,14 @@
 package io.lettuce.core;
 
 import java.net.SocketAddress;
-import java.net.SocketOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-import jdk.net.ExtendedSocketOptions;
+import io.lettuce.core.protocol.MaintenanceAwareComponent;
+import io.lettuce.core.protocol.MaintenanceAwareConnectionWatchdog;
 import reactor.core.publisher.Mono;
 import io.lettuce.core.internal.LettuceAssert;
 import io.lettuce.core.protocol.CommandEncoder;
@@ -35,17 +39,17 @@ import io.lettuce.core.protocol.ReconnectionListener;
 import io.lettuce.core.protocol.RedisHandshakeHandler;
 import io.lettuce.core.resource.ClientResources;
 import io.lettuce.core.resource.EpollProvider;
+import io.lettuce.core.resource.ExtendedKeepAliveSupport;
 import io.lettuce.core.resource.IOUringProvider;
-import io.lettuce.core.resource.KqueueProvider;
 import io.lettuce.core.resource.Transports;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.group.ChannelGroup;
-import io.netty.channel.socket.nio.NioChannelOption;
 import io.netty.util.AttributeKey;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
@@ -54,12 +58,15 @@ import io.netty.util.internal.logging.InternalLoggerFactory;
  * Connection builder for connections. This class is part of the internal API.
  *
  * @author Mark Paluch
+ * @author Bodong Ybd
  */
 public class ConnectionBuilder {
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(ConnectionBuilder.class);
 
-    public static final AttributeKey<String> REDIS_URI = AttributeKey.newInstance("RedisURI");
+    public static final AttributeKey<String> REDIS_URI = AttributeKey.valueOf("RedisURI");
+
+    public static final AttributeKey<Throwable> INIT_FAILURE = AttributeKey.valueOf("ConnectionBuilder.INIT_FAILURE");
 
     private Mono<SocketAddress> socketAddressSupplier;
 
@@ -145,9 +152,21 @@ public class ConnectionBuilder {
         LettuceAssert.assertState(bootstrap != null, "Bootstrap must be set for autoReconnect=true");
         LettuceAssert.assertState(socketAddressSupplier != null, "SocketAddressSupplier must be set for autoReconnect=true");
 
-        ConnectionWatchdog watchdog = new ConnectionWatchdog(clientResources.reconnectDelay(), clientOptions, bootstrap,
-                clientResources.timer(), clientResources.eventExecutorGroup(), socketAddressSupplier, reconnectionListener,
-                connection, clientResources.eventBus(), endpoint);
+        ConnectionWatchdog watchdog;
+        if (clientOptions.getMaintNotificationsConfig().maintNotificationsEnabled()) {
+            MaintenanceAwareConnectionWatchdog maintenanceAwareWatchdog = new MaintenanceAwareConnectionWatchdog(
+                    clientResources.reconnectDelay(), clientOptions, bootstrap, clientResources.timer(),
+                    clientResources.eventExecutorGroup(), socketAddressSupplier, reconnectionListener, connection,
+                    clientResources.eventBus(), endpoint);
+            if (connection.getChannelWriter() instanceof MaintenanceAwareComponent) {
+                maintenanceAwareWatchdog.setMaintenanceEventListener((MaintenanceAwareComponent) connection.getChannelWriter());
+            }
+            watchdog = maintenanceAwareWatchdog;
+        } else {
+            watchdog = new ConnectionWatchdog(clientResources.reconnectDelay(), clientOptions, bootstrap,
+                    clientResources.timer(), clientResources.eventExecutorGroup(), socketAddressSupplier, reconnectionListener,
+                    connection, clientResources.eventBus(), endpoint);
+        }
 
         endpoint.registerConnectionWatchdog(watchdog);
 
@@ -248,7 +267,7 @@ public class ConnectionBuilder {
         if (domainSocket) {
 
             Transports.NativeTransports.assertDomainSocketAvailable();
-            eventLoopGroupClass = Transports.NativeTransports.eventLoopGroupClass();
+            eventLoopGroupClass = Transports.NativeTransports.eventLoopGroupClass(true);
             channelClass = Transports.NativeTransports.domainSocketChannelClass();
         } else {
             bootstrap.resolver(clientResources.addressResolverGroup());
@@ -260,8 +279,26 @@ public class ConnectionBuilder {
         bootstrap.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, Math.toIntExact(options.getConnectTimeout().toMillis()));
 
         if (!domainSocket) {
+
             bootstrap.option(ChannelOption.SO_KEEPALIVE, options.isKeepAlive());
             bootstrap.option(ChannelOption.TCP_NODELAY, options.isTcpNoDelay());
+
+            if (options.isEnableTcpUserTimeout()) {
+
+                SocketOptions.TcpUserTimeoutOptions tcpUserTimeoutOptions = options.getTcpUserTimeout();
+
+                boolean applied = false;
+                if (IOUringProvider.isAvailable()) {
+                    IOUringProvider.applyTcpUserTimeout(bootstrap, tcpUserTimeoutOptions.getTcpUserTimeout());
+                    applied = true;
+                } else if (io.lettuce.core.resource.EpollProvider.isAvailable()) {
+                    EpollProvider.applyTcpUserTimeout(bootstrap, tcpUserTimeoutOptions.getTcpUserTimeout());
+                    applied = true;
+                }
+
+                LettuceAssert.assertState(applied,
+                        "TCP User Timeout options could not be applied. Native transports (io_uring or epoll) are required.");
+            }
         }
 
         bootstrap.channel(channelClass).group(eventLoopGroup);
@@ -269,18 +306,13 @@ public class ConnectionBuilder {
         if (options.isKeepAlive() && options.isExtendedKeepAlive()) {
 
             SocketOptions.KeepAliveOptions keepAlive = options.getKeepAlive();
+            boolean applied = ExtendedKeepAliveSupport.applyKeepAlive(bootstrap, keepAlive.getCount(), keepAlive.getIdle(),
+                    keepAlive.getInterval());
 
-            if (IOUringProvider.isAvailable()) {
-                IOUringProvider.applyKeepAlive(bootstrap, keepAlive.getCount(), keepAlive.getIdle(), keepAlive.getInterval());
-            } else if (io.lettuce.core.resource.EpollProvider.isAvailable()) {
-                EpollProvider.applyKeepAlive(bootstrap, keepAlive.getCount(), keepAlive.getIdle(), keepAlive.getInterval());
-            } else if (ExtendedNioSocketOptions.isAvailable() && !KqueueProvider.isAvailable()) {
-                ExtendedNioSocketOptions.applyKeepAlive(bootstrap, keepAlive.getCount(), keepAlive.getIdle(),
-                        keepAlive.getInterval());
-            } else {
-                logger.warn("Cannot apply extended TCP keepalive options to channel type " + channelClass.getName());
-            }
+            LettuceAssert.assertState(applied,
+                    "Extended TCP keepalive options could not be applied. Native transports (io_uring or epoll) or a compatible NIO transport are required.");
         }
+
     }
 
     public RedisChannelHandler<?, ?> connection() {
@@ -332,53 +364,10 @@ public class ConnectionBuilder {
             clientResources.nettyCustomizer().afterChannelInitialized(channel);
         }
 
-    }
-
-    /**
-     * Utility to support Java 11 {@link ExtendedSocketOptions extended keepalive options}.
-     */
-    @SuppressWarnings("unchecked")
-    static class ExtendedNioSocketOptions {
-
-        private static final SocketOption<Integer> TCP_KEEPCOUNT;
-
-        private static final SocketOption<Integer> TCP_KEEPIDLE;
-
-        private static final SocketOption<Integer> TCP_KEEPINTERVAL;
-
-        static {
-
-            SocketOption<Integer> keepCount = null;
-            SocketOption<Integer> keepIdle = null;
-            SocketOption<Integer> keepInterval = null;
-            try {
-
-                keepCount = (SocketOption<Integer>) ExtendedSocketOptions.class.getDeclaredField("TCP_KEEPCOUNT").get(null);
-                keepIdle = (SocketOption<Integer>) ExtendedSocketOptions.class.getDeclaredField("TCP_KEEPIDLE").get(null);
-                keepInterval = (SocketOption<Integer>) ExtendedSocketOptions.class.getDeclaredField("TCP_KEEPINTERVAL")
-                        .get(null);
-            } catch (ReflectiveOperationException e) {
-                logger.trace("Cannot extract ExtendedSocketOptions for KeepAlive", e);
-            }
-
-            TCP_KEEPCOUNT = keepCount;
-            TCP_KEEPIDLE = keepIdle;
-            TCP_KEEPINTERVAL = keepInterval;
-        }
-
-        public static boolean isAvailable() {
-            return TCP_KEEPCOUNT != null && TCP_KEEPIDLE != null && TCP_KEEPINTERVAL != null;
-        }
-
-        /**
-         * Apply Keep-Alive options.
-         *
-         */
-        public static void applyKeepAlive(Bootstrap bootstrap, int count, Duration idle, Duration interval) {
-
-            bootstrap.option(NioChannelOption.of(TCP_KEEPCOUNT), count);
-            bootstrap.option(NioChannelOption.of(TCP_KEEPIDLE), Math.toIntExact(idle.getSeconds()));
-            bootstrap.option(NioChannelOption.of(TCP_KEEPINTERVAL), Math.toIntExact(interval.getSeconds()));
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+            ctx.channel().attr(INIT_FAILURE).set(cause);
+            super.exceptionCaught(ctx, cause);
         }
 
     }

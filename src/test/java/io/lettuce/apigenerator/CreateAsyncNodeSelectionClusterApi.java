@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -25,6 +29,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -32,6 +37,8 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.type.Type;
 
 import io.lettuce.core.internal.LettuceSets;
+
+import static io.lettuce.TestTags.API_GENERATOR;
 
 /**
  * Create async API based on the templates.
@@ -41,9 +48,12 @@ import io.lettuce.core.internal.LettuceSets;
  */
 class CreateAsyncNodeSelectionClusterApi {
 
-    private static final Set<String> FILTER_TEMPLATES = LettuceSets.unmodifiableSet("RedisSentinelCommands", "RedisTransactionalCommands");
-    private static final Set<String> FILTER_METHODS = LettuceSets.unmodifiableSet("shutdown", "debugOom", "debugSegfault", "digest", "close",
-            "isOpen", "BaseRedisCommands.reset", "readOnly", "readWrite", "setAutoFlushCommands", "flushCommands");
+    private static final Set<String> FILTER_TEMPLATES = LettuceSets.unmodifiableSet("RedisSentinelCommands",
+            "RedisTransactionalCommands");
+
+    private static final Set<String> FILTER_METHODS = LettuceSets.unmodifiableSet("shutdown", "debugOom", "debugSegfault",
+            "digest", "close", "isOpen", "BaseRedisCommands.reset", "readOnly", "readWrite", "setAutoFlushCommands",
+            "flushCommands");
 
     /**
      * Mutate type comment.
@@ -84,19 +94,20 @@ class CreateAsyncNodeSelectionClusterApi {
 
     @ParameterizedTest
     @MethodSource("arguments")
+    @Tag(API_GENERATOR)
     void createInterface(String argument) throws Exception {
         createFactory(argument).createInterface();
     }
 
     static List<String> arguments() {
-        return Stream
-                .of(Constants.TEMPLATE_NAMES)
-                .filter(t -> !FILTER_TEMPLATES.contains(t))
-                .collect(Collectors.toList());
+        return Stream.of(Constants.TEMPLATE_NAMES).filter(t -> !FILTER_TEMPLATES.contains(t)).collect(Collectors.toList());
     }
 
     private CompilationUnitFactory createFactory(String templateName) {
         String targetName = templateName.replace("Commands", "AsyncCommands").replace("Redis", "NodeSelection");
+        if (!targetName.contains("NodeSelection")) {
+            targetName = targetName.replace("Redi", "NodeSelection");
+        }
         File templateFile = new File(Constants.TEMPLATES, "io/lettuce/core/api/" + templateName + ".java");
         String targetPackage = "io.lettuce.core.cluster.api.async";
 
@@ -106,4 +117,5 @@ class CreateAsyncNodeSelectionClusterApi {
 
         return factory;
     }
+
 }

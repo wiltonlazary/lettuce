@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -96,15 +100,16 @@ class FutureSyncInvocationHandler extends AbstractInvocationHandler {
 
     private static boolean isTxControlMethod(String methodName, Object[] args) {
 
-        if (methodName.equals("exec") || methodName.equals("multi") || methodName.equals("discard")) {
+        if (methodName.equals("exec") || methodName.equals("multi") || methodName.equals("discard")
+                || methodName.equals("watch")) {
             return true;
         }
 
         if (methodName.equals("dispatch") && args.length > 0 && args[0] instanceof ProtocolKeyword) {
 
             ProtocolKeyword keyword = (ProtocolKeyword) args[0];
-            if (keyword.name().equals(CommandType.MULTI.name()) || keyword.name().equals(CommandType.EXEC.name())
-                    || keyword.name().equals(CommandType.DISCARD.name())) {
+            if (keyword.toString().equals(CommandType.MULTI.name()) || keyword.toString().equals(CommandType.EXEC.name())
+                    || keyword.toString().equals(CommandType.DISCARD.name())) {
                 return true;
             }
         }

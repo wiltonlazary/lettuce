@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -14,6 +18,8 @@
  * limitations under the License.
  */
 package io.lettuce.core.cluster;
+
+import static io.lettuce.core.event.cluster.AdaptiveRefreshTriggeredEvent.*;
 
 import java.time.Duration;
 import java.util.concurrent.CompletionStage;
@@ -85,9 +91,9 @@ class ClusterTopologyRefreshScheduler implements Runnable, ClusterEventListener 
     }
 
     /**
-     * Disable periodic topology refresh.
+     * Suspend (cancel) periodic topology refresh.
      */
-    public void shutdown() {
+    public void suspendTopologyRefresh() {
 
         if (clusterTopologyRefreshActivated.compareAndSet(true, false)) {
 
@@ -100,6 +106,10 @@ class ClusterTopologyRefreshScheduler implements Runnable, ClusterEventListener 
                 logger.debug("Could not cancel Cluster topology refresh", e);
             }
         }
+    }
+
+    public boolean isTopologyRefreshInProgress() {
+        return clusterTopologyRefreshTask.get();
     }
 
     @Override
@@ -125,7 +135,9 @@ class ClusterTopologyRefreshScheduler implements Runnable, ClusterEventListener 
     public void onAskRedirection() {
 
         if (isEnabled(ClusterTopologyRefreshOptions.RefreshTrigger.ASK_REDIRECT)) {
-            indicateTopologyRefreshSignal();
+            if (indicateTopologyRefreshSignal()) {
+                emitAdaptiveRefreshScheduledEvent(ClusterTopologyRefreshOptions.RefreshTrigger.ASK_REDIRECT);
+            }
         }
     }
 
@@ -134,7 +146,7 @@ class ClusterTopologyRefreshScheduler implements Runnable, ClusterEventListener 
 
         if (isEnabled(ClusterTopologyRefreshOptions.RefreshTrigger.MOVED_REDIRECT)) {
             if (indicateTopologyRefreshSignal()) {
-                emitAdaptiveRefreshScheduledEvent();
+                emitAdaptiveRefreshScheduledEvent(ClusterTopologyRefreshOptions.RefreshTrigger.MOVED_REDIRECT);
             }
         }
     }
@@ -145,7 +157,7 @@ class ClusterTopologyRefreshScheduler implements Runnable, ClusterEventListener 
         if (isEnabled(ClusterTopologyRefreshOptions.RefreshTrigger.PERSISTENT_RECONNECTS)
                 && attempt >= getClusterTopologyRefreshOptions().getRefreshTriggersReconnectAttempts()) {
             if (indicateTopologyRefreshSignal()) {
-                emitAdaptiveRefreshScheduledEvent();
+                emitPersistentReconnectAdaptiveRefreshScheduledEvent(attempt);
             }
         }
     }
@@ -155,7 +167,7 @@ class ClusterTopologyRefreshScheduler implements Runnable, ClusterEventListener 
 
         if (isEnabled(ClusterTopologyRefreshOptions.RefreshTrigger.UNCOVERED_SLOT)) {
             if (indicateTopologyRefreshSignal()) {
-                emitAdaptiveRefreshScheduledEvent();
+                emitUncoveredSlotAdaptiveRefreshScheduledEvent(slot);
             }
         }
     }
@@ -165,14 +177,35 @@ class ClusterTopologyRefreshScheduler implements Runnable, ClusterEventListener 
 
         if (isEnabled(ClusterTopologyRefreshOptions.RefreshTrigger.UNKNOWN_NODE)) {
             if (indicateTopologyRefreshSignal()) {
-                emitAdaptiveRefreshScheduledEvent();
+                emitAdaptiveRefreshScheduledEvent(ClusterTopologyRefreshOptions.RefreshTrigger.UNKNOWN_NODE);
             }
         }
     }
 
-    private void emitAdaptiveRefreshScheduledEvent() {
+    private void emitAdaptiveRefreshScheduledEvent(ClusterTopologyRefreshOptions.RefreshTrigger trigger) {
+        logger.debug("Adaptive refresh event due to: {}", trigger);
 
-        AdaptiveRefreshTriggeredEvent event = new AdaptiveRefreshTriggeredEvent(partitions, this::scheduleRefresh);
+        AdaptiveRefreshTriggeredEvent event = new AdaptiveRefreshTriggeredEvent(partitions, this::scheduleRefresh, trigger);
+
+        clientResources.eventBus().publish(event);
+    }
+
+    private void emitPersistentReconnectAdaptiveRefreshScheduledEvent(int attempt) {
+        logger.debug("Adaptive refresh event due to: {} attempt {}",
+                ClusterTopologyRefreshOptions.RefreshTrigger.PERSISTENT_RECONNECTS, attempt);
+
+        AdaptiveRefreshTriggeredEvent event = new PersistentReconnectsAdaptiveRefreshTriggeredEvent(partitions,
+                this::scheduleRefresh, attempt);
+
+        clientResources.eventBus().publish(event);
+    }
+
+    private void emitUncoveredSlotAdaptiveRefreshScheduledEvent(int slot) {
+        logger.debug("Adaptive refresh event due to: {} for slot {}",
+                ClusterTopologyRefreshOptions.RefreshTrigger.UNCOVERED_SLOT, slot);
+
+        AdaptiveRefreshTriggeredEvent event = new UncoveredSlotAdaptiveRefreshTriggeredEvent(partitions, this::scheduleRefresh,
+                slot);
 
         clientResources.eventBus().publish(event);
     }

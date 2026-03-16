@@ -1,18 +1,3 @@
-/*
- * Copyright 2011-2021 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.cluster.models.partitions;
 
 import java.util.*;
@@ -216,11 +201,23 @@ public class ClusterPartitionParser {
         RedisURI uri = null;
 
         String hostAndPortPart = iterator.next();
-        if (hostAndPortPart.contains("@")) {
-            hostAndPortPart = hostAndPortPart.substring(0, hostAndPortPart.indexOf('@'));
+        String announcedHostName = null;
+        int atIndex = hostAndPortPart.indexOf('@');
+        if (atIndex != -1) {
+            String busPart = hostAndPortPart.substring(atIndex + 1);
+            hostAndPortPart = hostAndPortPart.substring(0, atIndex);
+
+            int comma = busPart.indexOf(',');
+            if (comma != -1) {
+                announcedHostName = busPart.substring(comma + 1);
+            }
         }
 
         HostAndPort hostAndPort = HostAndPort.parseCompat(hostAndPortPart);
+
+        if (LettuceStrings.isNotEmpty(announcedHostName)) {
+            hostAndPort = HostAndPort.of(announcedHostName, hostAndPort.getPort());
+        }
 
         if (LettuceStrings.isNotEmpty(hostAndPort.getHostText())) {
             uri = RedisURI.Builder.redis(hostAndPort.getHostText(), hostAndPort.getPort()).build();
@@ -297,19 +294,28 @@ public class ClusterPartitionParser {
         return slots;
     }
 
-    private static BitSet readSlotRanges(List<Integer> slotRanges) {
+    private static BitSet readSlotRanges(List<?> slotRanges) {
 
         BitSet slots = new BitSet(SlotHash.SLOT_COUNT);
 
         for (int i = 0; i < slotRanges.size(); i += 2) {
 
-            Number from = slotRanges.get(i);
-            Number to = slotRanges.get(i + 1);
+            Number from = getAsNumber(slotRanges.get(i));
+            Number to = getAsNumber(slotRanges.get(i + 1));
 
             addSlots(slots, from.intValue(), to.intValue());
         }
 
         return slots;
+    }
+
+    private static Number getAsNumber(Object stringOrNumber) {
+
+        if (stringOrNumber instanceof Number) {
+            return (Number) stringOrNumber;
+        }
+
+        return Integer.parseInt(stringOrNumber.toString());
     }
 
     private static void addSlots(BitSet slots, int from, int to) {

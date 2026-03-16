@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -23,6 +27,7 @@ import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -31,6 +36,8 @@ import com.github.javaparser.ast.type.Type;
 
 import io.lettuce.core.internal.LettuceSets;
 
+import static io.lettuce.TestTags.API_GENERATOR;
+
 /**
  * Create async API based on the templates.
  *
@@ -38,7 +45,9 @@ import io.lettuce.core.internal.LettuceSets;
  */
 class CreateAsyncApi {
 
-    public static final Set<String> KEEP_METHOD_RESULT_TYPE = LettuceSets.unmodifiableSet("shutdown", "debugOom", "debugSegfault", "digest", "close", "isOpen", "BaseRedisCommands.reset", "getStatefulConnection", "setAutoFlushCommands", "flushCommands");
+    public static final Set<String> KEEP_METHOD_RESULT_TYPE = LettuceSets.unmodifiableSet("shutdown", "debugOom",
+            "debugSegfault", "digest", "close", "isOpen", "BaseRedisCommands.reset", "getStatefulConnection",
+            "setAutoFlushCommands", "flushCommands");
 
     /**
      * Mutate type comment.
@@ -70,6 +79,7 @@ class CreateAsyncApi {
 
     @ParameterizedTest
     @MethodSource("arguments")
+    @Tag(API_GENERATOR)
     void createInterface(String argument) throws Exception {
         createFactory(argument).createInterface();
     }
@@ -97,4 +107,5 @@ class CreateAsyncApi {
 
         return factory;
     }
+
 }

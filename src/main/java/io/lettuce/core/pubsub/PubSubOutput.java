@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -34,7 +38,7 @@ public class PubSubOutput<K, V> extends CommandOutput<K, V, V> implements PubSub
 
     public enum Type {
 
-        message, pmessage, psubscribe, punsubscribe, subscribe, unsubscribe;
+        message, pmessage, psubscribe, punsubscribe, subscribe, unsubscribe, ssubscribe, smessage, sunsubscribe;
 
         private final static Set<String> names = new HashSet<>();
 
@@ -89,7 +93,7 @@ public class PubSubOutput<K, V> extends CommandOutput<K, V, V> implements PubSub
         }
 
         if (type == null) {
-            type = Type.valueOf(decodeAscii(bytes));
+            type = Type.valueOf(decodeString(bytes));
             return;
         }
 
@@ -104,6 +108,7 @@ public class PubSubOutput<K, V> extends CommandOutput<K, V, V> implements PubSub
                     pattern = codec.decodeKey(bytes);
                     break;
                 }
+            case smessage:
             case message:
                 if (channel == null) {
                     channel = codec.decodeKey(bytes);
@@ -118,6 +123,8 @@ public class PubSubOutput<K, V> extends CommandOutput<K, V, V> implements PubSub
                 break;
             case subscribe:
             case unsubscribe:
+            case ssubscribe:
+            case sunsubscribe:
                 channel = codec.decodeKey(bytes);
                 break;
             default:

@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -47,6 +51,12 @@ internal class RedisKeyCoroutinesCommandsImpl<K : Any, V : Any>(internal val ops
 
     override suspend fun unlink(vararg keys: K): Long? =
         ops.unlink(*keys).awaitFirstOrNull()
+
+    override suspend fun delex(key: K, condition: CompareCondition<V>): Long? =
+        ops.delex(key, condition).awaitFirstOrNull()
+
+    override suspend fun digestKey(key: K): String? =
+        ops.digestKey(key).awaitFirstOrNull()
 
     override suspend fun dump(key: K): ByteArray? = ops.dump(key).awaitFirstOrNull()
 
@@ -104,7 +114,9 @@ internal class RedisKeyCoroutinesCommandsImpl<K : Any, V : Any>(internal val ops
     override suspend fun expiretime(key: K): Long? =
         ops.expiretime(key).awaitFirstOrNull()
 
-    override fun keys(pattern: K): Flow<K> = ops.keys(pattern).asFlow()
+    override fun keys(pattern: String): Flow<K> = ops.keys(pattern).asFlow()
+
+    override fun keysLegacy(pattern: K): Flow<K> = ops.keysLegacy(pattern).asFlow()
 
     override suspend fun migrate(
         host: String,

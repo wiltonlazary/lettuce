@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -21,12 +25,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Date;
 
+import io.lettuce.core.annotations.Experimental;
 import io.lettuce.core.internal.LettuceAssert;
 import io.lettuce.core.protocol.CommandArgs;
 
 /**
- * Argument list builder for the Redis <a href="https://redis.io/commands/set">SET</a> command starting from Redis 2.6.12. Static
- * import the methods from {@link Builder} and chain the method calls: {@code ex(10).nx()}.
+ * Argument list builder for the Redis <a href="https://redis.io/commands/set">SET</a> command starting from Redis 2.6.12.
+ * Static import the methods from {@link Builder} and chain the method calls: {@code ex(10).nx()}.
  * <p>
  * {@link SetArgs} is a mutable object and instances should be used only once to avoid shared mutable state.
  *
@@ -49,6 +54,9 @@ public class SetArgs implements CompositeArgument {
     private boolean xx = false;
 
     private boolean keepttl = false;
+
+    @Experimental
+    private CompareCondition<?> compareCondition;
 
     /**
      * Builder entry points for {@link SetArgs}.
@@ -75,7 +83,7 @@ public class SetArgs implements CompositeArgument {
         /**
          * Creates new {@link SetArgs} and enable {@literal EX}.
          *
-         * @param timeout expire time in seconds.
+         * @param timeout expire time as duration.
          * @return new {@link SetArgs} with {@literal EX} enabled.
          * @see SetArgs#ex(long)
          * @since 6.1
@@ -206,6 +214,19 @@ public class SetArgs implements CompositeArgument {
          */
         public static SetArgs keepttl() {
             return new SetArgs().keepttl();
+        }
+
+        /**
+         * Creates new {@link SetArgs} with compare condition {@link CompareCondition}
+         *
+         * @param condition the compare condition.
+         * @return new {@link SetArgs} with compare condition {@link CompareCondition}.
+         * @see SetArgs#compareCondition(CompareCondition)
+         * @since 7.1
+         */
+        @Experimental
+        public static SetArgs compareCondition(CompareCondition condition) {
+            return new SetArgs().compareCondition(condition);
         }
 
     }
@@ -379,6 +400,20 @@ public class SetArgs implements CompositeArgument {
         return this;
     }
 
+    /**
+     * Set a compare condition for the SET operation.
+     *
+     * @param compareCondition the value condition to apply.
+     * @return {@code this} {@link SetArgs}.
+     * @since 7.1
+     */
+    @Experimental
+    public <V> SetArgs compareCondition(CompareCondition<V> compareCondition) {
+
+        this.compareCondition = compareCondition;
+        return this;
+    }
+
     @Override
     public <K, V> void build(CommandArgs<K, V> args) {
 
@@ -408,6 +443,10 @@ public class SetArgs implements CompositeArgument {
 
         if (keepttl) {
             args.add("KEEPTTL");
+        }
+
+        if (compareCondition != null) {
+            ((CompareCondition<V>) compareCondition).build(args);
         }
     }
 

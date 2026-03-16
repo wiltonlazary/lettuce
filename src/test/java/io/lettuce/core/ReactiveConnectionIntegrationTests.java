@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,29 +19,26 @@
  */
 package io.lettuce.core;
 
-import static io.lettuce.core.ClientOptions.DisconnectedBehavior.REJECT_COMMANDS;
+import static io.lettuce.TestTags.INTEGRATION_TEST;
+import static io.lettuce.core.ClientOptions.DisconnectedBehavior.*;
 import static io.lettuce.core.ScriptOutputType.INTEGER;
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import javax.enterprise.inject.New;
 import javax.inject.Inject;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.reactivestreams.Subscriber;
 import org.reactivestreams.Subscription;
 
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-import reactor.test.StepVerifier;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.reactive.RedisReactiveCommands;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -46,18 +47,25 @@ import io.lettuce.test.LettuceExtension;
 import io.lettuce.test.Wait;
 import io.lettuce.test.WithPassword;
 import io.lettuce.test.condition.EnabledOnCommand;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.test.StepVerifier;
 
 /**
  * @author Mark Paluch
  * @author Nikolai Perevozchikov
  * @author Tugdual Grall
+ * @author Hari Mani
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class ReactiveConnectionIntegrationTests extends TestSupport {
 
     private final StatefulRedisConnection<String, String> connection;
+
     private final RedisCommands<String, String> redis;
+
     private final RedisReactiveCommands<String, String> reactive;
 
     @Inject
@@ -93,73 +101,12 @@ class ReactiveConnectionIntegrationTests extends TestSupport {
 
     @Test
     void isOpen() {
-        assertThat(reactive.isOpen()).isTrue();
-    }
-
-    @Test
-    void getStatefulConnection() {
-        assertThat(reactive.getStatefulConnection()).isSameAs(connection);
-    }
-
-    @Test
-    @Inject
-    void testCancelCommand(@New StatefulRedisConnection<String, String> connection) {
-
-        RedisReactiveCommands<String, String> reactive = connection.reactive();
-        List<Object> result = new ArrayList<>();
-        reactive.clientPause(2000).subscribe();
-        Delay.delay(Duration.ofMillis(50));
-
-        reactive.set(key, value).subscribe(new CompletionSubscriber(result));
-        Delay.delay(Duration.ofMillis(50));
-
-        reactive.reset();
-        assertThat(result).isEmpty();
+        assertThat(connection.isOpen()).isTrue();
     }
 
     @Test
     void testEcho() {
         StepVerifier.create(reactive.echo("echo")).expectNext("echo").verifyComplete();
-    }
-
-    @Test
-    @Inject
-    void testMonoMultiCancel(@New StatefulRedisConnection<String, String> connection) {
-
-        RedisReactiveCommands<String, String> reactive = connection.reactive();
-
-        List<Object> result = new ArrayList<>();
-        reactive.clientPause(1000).subscribe();
-        Delay.delay(Duration.ofMillis(50));
-
-        Mono<String> set = reactive.set(key, value);
-        set.subscribe(new CompletionSubscriber(result));
-        set.subscribe(new CompletionSubscriber(result));
-        set.subscribe(new CompletionSubscriber(result));
-        Delay.delay(Duration.ofMillis(50));
-
-        reactive.reset();
-        assertThat(result).isEmpty();
-    }
-
-    @Test
-    @Inject
-    void testFluxCancel(@New StatefulRedisConnection<String, String> connection) {
-
-        RedisReactiveCommands<String, String> reactive = connection.reactive();
-
-        List<Object> result = new ArrayList<>();
-        reactive.clientPause(1000).subscribe();
-        Delay.delay(Duration.ofMillis(100));
-
-        Flux<KeyValue<String, String>> set = reactive.mget(key, value);
-        set.subscribe(new CompletionSubscriber(result));
-        set.subscribe(new CompletionSubscriber(result));
-        set.subscribe(new CompletionSubscriber(result));
-        Delay.delay(Duration.ofMillis(100));
-
-        reactive.reset();
-        assertThat(result).isEmpty();
     }
 
     @Test
@@ -184,23 +131,20 @@ class ReactiveConnectionIntegrationTests extends TestSupport {
     void transactional(RedisClient client) throws Exception {
 
         final CountDownLatch sync = new CountDownLatch(1);
+        try (StatefulRedisConnection<String, String> statefulRedisConnection = client.connect()) {
+            RedisReactiveCommands<String, String> reactive = statefulRedisConnection.reactive();
 
-        RedisReactiveCommands<String, String> reactive = client.connect().reactive();
-
-        reactive.multi().subscribe(multiResponse -> {
-            reactive.set(key, "1").subscribe();
-            reactive.incr(key).subscribe(getResponse -> {
-                sync.countDown();
+            reactive.multi().subscribe(multiResponse -> {
+                reactive.set(key, "1").subscribe();
+                reactive.incr(key).subscribe(getResponse -> sync.countDown());
+                reactive.exec().subscribe();
             });
-            reactive.exec().subscribe();
-        });
 
-        sync.await(5, TimeUnit.SECONDS);
+            sync.await(5, TimeUnit.SECONDS);
 
-        String result = redis.get(key);
-        assertThat(result).isEqualTo("2");
-
-        reactive.getStatefulConnection().close();
+            String result = redis.get(key);
+            assertThat(result).isEqualTo("2");
+        }
     }
 
     @Test
@@ -255,11 +199,10 @@ class ReactiveConnectionIntegrationTests extends TestSupport {
         connection.async().quit();
         Wait.untilTrue(() -> !connection.isOpen()).waitOrTimeout();
 
-        StepVerifier.create(connection.reactive().ping()).consumeErrorWith(throwable -> {
-            assertThat(throwable).isInstanceOf(RedisException.class)
-                    .hasMessageContaining("not connected. Commands are rejected");
-
-        }).verify();
+        StepVerifier
+                .create(connection.reactive().ping()).consumeErrorWith(throwable -> assertThat(throwable)
+                        .isInstanceOf(RedisException.class).hasMessageContaining("not connected. Commands are rejected"))
+                .verify();
 
         connection.close();
     }
@@ -269,19 +212,18 @@ class ReactiveConnectionIntegrationTests extends TestSupport {
     void publishOnSchedulerTest(RedisClient client) {
 
         client.setOptions(ClientOptions.builder().publishOnScheduler(true).build());
+        try (StatefulRedisConnection<String, String> statefulRedisConnection = client.connect()) {
+            RedisReactiveCommands<String, String> reactive = statefulRedisConnection.reactive();
 
-        RedisReactiveCommands<String, String> reactive = client.connect().reactive();
-
-        int counter = 0;
-        for (int i = 0; i < 1000; i++) {
-            if (reactive.eval("return 1", INTEGER).next().block() == null) {
-                counter++;
+            int counter = 0;
+            for (int i = 0; i < 1000; i++) {
+                if (reactive.eval("return 1", INTEGER).next().block() == null) {
+                    counter++;
+                }
             }
+
+            assertThat(counter).isZero();
         }
-
-        assertThat(counter).isZero();
-
-        reactive.getStatefulConnection().close();
     }
 
     private static Subscriber<String> createSubscriberWithExceptionOnComplete() {
@@ -304,6 +246,7 @@ class ReactiveConnectionIntegrationTests extends TestSupport {
             @Override
             public void onNext(String s) {
             }
+
         };
     }
 
@@ -334,5 +277,7 @@ class ReactiveConnectionIntegrationTests extends TestSupport {
         public void onNext(Object o) {
             result.add(o);
         }
+
     }
+
 }

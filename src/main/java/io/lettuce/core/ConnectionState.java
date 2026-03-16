@@ -1,7 +1,11 @@
 /*
- * Copyright 2019-2022 the original author or authors.
+ * Copyright 2019-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -37,7 +41,7 @@ public class ConnectionState {
 
     private volatile boolean readOnly;
 
-    private volatile String clientName;
+    private volatile ConnectionMetadata connectionMetadata = new ConnectionMetadata();
 
     /**
      * Applies settings from {@link RedisURI}.
@@ -46,8 +50,16 @@ public class ConnectionState {
      */
     public void apply(RedisURI redisURI) {
 
-        setClientName(redisURI.getClientName());
+        connectionMetadata.apply(redisURI);
         setCredentialsProvider(redisURI.getCredentialsProvider());
+    }
+
+    void apply(ConnectionMetadata metadata) {
+        this.connectionMetadata.apply(metadata);
+    }
+
+    ConnectionMetadata getConnectionMetadata() {
+        return connectionMetadata;
     }
 
     /**
@@ -142,11 +154,11 @@ public class ConnectionState {
     }
 
     protected void setClientName(String clientName) {
-        this.clientName = clientName;
+        this.connectionMetadata.setClientName(clientName);
     }
 
     String getClientName() {
-        return clientName;
+        return connectionMetadata.getClientName();
     }
 
     /**

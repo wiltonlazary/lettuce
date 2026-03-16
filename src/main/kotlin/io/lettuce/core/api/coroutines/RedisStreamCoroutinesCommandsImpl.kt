@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -49,6 +53,8 @@ internal class RedisStreamCoroutinesCommandsImpl<K : Any, V : Any>(internal val 
     override suspend fun xadd(key: K, args: XAddArgs, vararg keysAndValues: Any): String? = ops.xadd(key, args, *keysAndValues).awaitFirstOrNull()
 
     override suspend fun xautoclaim(key: K, args: XAutoClaimArgs<K>): ClaimedMessages<K, V>? = ops.xautoclaim(key, args).awaitFirstOrNull()
+
+    override suspend fun xcfgset(key: K, args: XCfgSetArgs): String? = ops.xcfgset(key, args).awaitFirstOrNull()
 
     override fun xclaim(key: K, consumer: Consumer<K>, minIdleTime: Long, vararg messageIds: String): Flow<StreamMessage<K, V>> = ops.xclaim(key, consumer, minIdleTime, *messageIds).asFlow()
 

@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -20,6 +24,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import io.lettuce.core.RedisURI;
 import io.lettuce.core.cluster.SlotHash;
@@ -57,6 +63,8 @@ import io.lettuce.core.internal.LettuceAssert;
 public class Partitions implements Collection<RedisClusterNode> {
 
     private static final RedisClusterNode[] EMPTY = new RedisClusterNode[SlotHash.SLOT_COUNT];
+
+    private final Lock lock = new ReentrantLock();
 
     private final List<RedisClusterNode> partitions = new ArrayList<>();
 
@@ -162,8 +170,8 @@ public class Partitions implements Collection<RedisClusterNode> {
      */
     public void updateCache() {
 
-        synchronized (partitions) {
-
+        lock.lock();
+        try {
             if (partitions.isEmpty()) {
                 invalidateCache();
                 return;
@@ -186,6 +194,8 @@ public class Partitions implements Collection<RedisClusterNode> {
             this.slotCache = slotCache;
             this.masterCache = masterCache;
             this.nodeReadView = Collections.unmodifiableCollection(readView);
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -228,9 +238,12 @@ public class Partitions implements Collection<RedisClusterNode> {
 
         LettuceAssert.notNull(partition, "Partition must not be null");
 
-        synchronized (partitions) {
+        lock.lock();
+        try {
             invalidateCache();
             partitions.add(partition);
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -261,10 +274,13 @@ public class Partitions implements Collection<RedisClusterNode> {
 
         LettuceAssert.noNullElements(partitions, "Partitions must not contain null elements");
 
-        synchronized (this.partitions) {
+        lock.lock();
+        try {
             this.partitions.clear();
             this.partitions.addAll(partitions);
             updateCache();
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -300,10 +316,13 @@ public class Partitions implements Collection<RedisClusterNode> {
 
         LettuceAssert.noNullElements(c, "Partitions must not contain null elements");
 
-        synchronized (partitions) {
+        lock.lock();
+        try {
             boolean b = partitions.addAll(c);
             updateCache();
             return b;
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -317,10 +336,13 @@ public class Partitions implements Collection<RedisClusterNode> {
     @Override
     public boolean removeAll(Collection<?> c) {
 
-        synchronized (partitions) {
+        lock.lock();
+        try {
             boolean b = getPartitions().removeAll(c);
             updateCache();
             return b;
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -335,10 +357,13 @@ public class Partitions implements Collection<RedisClusterNode> {
     @Override
     public boolean retainAll(Collection<?> c) {
 
-        synchronized (partitions) {
+        lock.lock();
+        try {
             boolean b = getPartitions().retainAll(c);
             updateCache();
             return b;
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -348,9 +373,12 @@ public class Partitions implements Collection<RedisClusterNode> {
     @Override
     public void clear() {
 
-        synchronized (partitions) {
+        lock.lock();
+        try {
             getPartitions().clear();
             updateCache();
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -386,12 +414,15 @@ public class Partitions implements Collection<RedisClusterNode> {
     @Override
     public boolean add(RedisClusterNode redisClusterNode) {
 
-        synchronized (partitions) {
+        lock.lock();
+        try {
             LettuceAssert.notNull(redisClusterNode, "RedisClusterNode must not be null");
 
             boolean add = getPartitions().add(redisClusterNode);
             updateCache();
             return add;
+        } finally {
+            lock.unlock();
         }
     }
 
@@ -404,10 +435,13 @@ public class Partitions implements Collection<RedisClusterNode> {
     @Override
     public boolean remove(Object o) {
 
-        synchronized (partitions) {
+        lock.lock();
+        try {
             boolean remove = getPartitions().remove(o);
             updateCache();
             return remove;
+        } finally {
+            lock.unlock();
         }
     }
 

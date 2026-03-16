@@ -1,24 +1,13 @@
-/*
- * Copyright 2016-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.support;
 
 import static io.lettuce.core.support.ConnectionWrapping.HasTargetConnection;
 
+import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import org.apache.commons.pool2.BasePooledObjectFactory;
@@ -73,6 +62,8 @@ import io.lettuce.core.support.ConnectionWrapping.Origin;
  * </pre>
  *
  * @author Mark Paluch
+ * @author dae won
+ * @author JiHongKim98
  * @since 4.3
  */
 public abstract class ConnectionPoolSupport {
@@ -82,7 +73,8 @@ public abstract class ConnectionPoolSupport {
 
     /**
      * Creates a new {@link GenericObjectPool} using the {@link Supplier}. Allocated instances are wrapped and must not be
-     * returned with {@link ObjectPool#returnObject(Object)}.
+     * returned with {@link ObjectPool#returnObject(Object)}. By default, connections are validated by checking their
+     * {@link StatefulConnection#isOpen()} method.
      *
      * @param connectionSupplier must not be {@code null}.
      * @param config must not be {@code null}.
@@ -91,7 +83,40 @@ public abstract class ConnectionPoolSupport {
      */
     public static <T extends StatefulConnection<?, ?>> GenericObjectPool<T> createGenericObjectPool(
             Supplier<T> connectionSupplier, GenericObjectPoolConfig<T> config) {
-        return createGenericObjectPool(connectionSupplier, config, true);
+        return createGenericObjectPool(connectionSupplier, config, true, (c) -> c.isOpen());
+    }
+
+    /**
+     * Creates a new {@link GenericObjectPool} using the {@link Supplier}. Allocated instances are wrapped and must not be
+     * returned with {@link ObjectPool#returnObject(Object)}.
+     *
+     * @param connectionSupplier must not be {@code null}.
+     * @param config must not be {@code null}.
+     * @param validationPredicate a {@link Predicate} to help validate connections
+     * @param <T> connection type.
+     * @return the connection pool.
+     */
+    public static <T extends StatefulConnection<?, ?>> GenericObjectPool<T> createGenericObjectPool(
+            Supplier<T> connectionSupplier, GenericObjectPoolConfig<T> config, Predicate<T> validationPredicate) {
+        return createGenericObjectPool(connectionSupplier, config, true, validationPredicate);
+    }
+
+    /**
+     * Creates a new {@link GenericObjectPool} using the {@link Supplier}. By default, connections are validated by checking
+     * their {@link StatefulConnection#isOpen()} method.
+     *
+     * @param connectionSupplier must not be {@code null}.
+     * @param config must not be {@code null}.
+     * @param wrapConnections {@code false} to return direct connections that need to be returned to the pool using
+     *        {@link ObjectPool#returnObject(Object)}. {@code true} to return wrapped connections that are returned to the pool
+     *        when invoking {@link StatefulConnection#close()}.
+     * @param <T> connection type.
+     * @return the connection pool.
+     */
+    @SuppressWarnings("unchecked")
+    public static <T extends StatefulConnection<?, ?>> GenericObjectPool<T> createGenericObjectPool(
+            Supplier<T> connectionSupplier, GenericObjectPoolConfig<T> config, boolean wrapConnections) {
+        return createGenericObjectPool(connectionSupplier, config, wrapConnections, (c) -> c.isOpen());
     }
 
     /**
@@ -100,26 +125,31 @@ public abstract class ConnectionPoolSupport {
      * @param connectionSupplier must not be {@code null}.
      * @param config must not be {@code null}.
      * @param wrapConnections {@code false} to return direct connections that need to be returned to the pool using
-     *        {@link ObjectPool#returnObject(Object)}. {@code true} to return wrapped connection that are returned to the
-     *        pool when invoking {@link StatefulConnection#close()}.
+     *        {@link ObjectPool#returnObject(Object)}. {@code true} to return wrapped connections that are returned to the pool
+     *        when invoking {@link StatefulConnection#close()}.
+     * @param validationPredicate a {@link Predicate} to help validate connections
      * @param <T> connection type.
      * @return the connection pool.
      */
     @SuppressWarnings("unchecked")
     public static <T extends StatefulConnection<?, ?>> GenericObjectPool<T> createGenericObjectPool(
-            Supplier<T> connectionSupplier, GenericObjectPoolConfig<T> config, boolean wrapConnections) {
+            Supplier<T> connectionSupplier, GenericObjectPoolConfig<T> config, boolean wrapConnections,
+            Predicate<T> validationPredicate) {
 
         LettuceAssert.notNull(connectionSupplier, "Connection supplier must not be null");
         LettuceAssert.notNull(config, "GenericObjectPoolConfig must not be null");
+        LettuceAssert.notNull(validationPredicate, "Connection validator must not be null");
 
         AtomicReference<Origin<T>> poolRef = new AtomicReference<>();
 
-        GenericObjectPool<T> pool = new GenericObjectPool<T>(new RedisPooledObjectFactory<T>(connectionSupplier), config) {
+        GenericObjectPool<T> pool = new GenericObjectPool<T>(
+                new RedisPooledObjectFactory<>(connectionSupplier, validationPredicate), config) {
 
             @Override
-            public T borrowObject() throws Exception {
-                return wrapConnections ? ConnectionWrapping.wrapConnection(super.borrowObject(), poolRef.get())
-                        : super.borrowObject();
+            public T borrowObject(Duration borrowMaxWaitDuration) throws Exception {
+                return wrapConnections
+                        ? ConnectionWrapping.wrapConnection(super.borrowObject(borrowMaxWaitDuration), poolRef.get())
+                        : super.borrowObject(borrowMaxWaitDuration);
             }
 
             @Override
@@ -157,35 +187,64 @@ public abstract class ConnectionPoolSupport {
      *
      * @param connectionSupplier must not be {@code null}.
      * @param wrapConnections {@code false} to return direct connections that need to be returned to the pool using
-     *        {@link ObjectPool#returnObject(Object)}. {@code true} to return wrapped connection that are returned to the
-     *        pool when invoking {@link StatefulConnection#close()}.
+     *        {@link ObjectPool#returnObject(Object)}. {@code true} to return wrapped connections that are returned to the pool
+     *        when invoking {@link StatefulConnection#close()}.
      * @param <T> connection type.
      * @return the connection pool.
      */
     @SuppressWarnings("unchecked")
     public static <T extends StatefulConnection<?, ?>> SoftReferenceObjectPool<T> createSoftReferenceObjectPool(
             Supplier<T> connectionSupplier, boolean wrapConnections) {
+        return createSoftReferenceObjectPool(connectionSupplier, wrapConnections, (c) -> c.isOpen());
+    }
+
+    /**
+     * Creates a new {@link SoftReferenceObjectPool} using the {@link Supplier}.
+     *
+     * @param connectionSupplier must not be {@code null}.
+     * @param wrapConnections {@code false} to return direct connections that need to be returned to the pool using
+     *        {@link ObjectPool#returnObject(Object)}. {@code true} to return wrapped connections that are returned to the pool
+     *        when invoking {@link StatefulConnection#close()}.
+     * @param validationPredicate a {@link Predicate} to help validate connections
+     * @param <T> connection type.
+     * @return the connection pool.
+     */
+    @SuppressWarnings("unchecked")
+    public static <T extends StatefulConnection<?, ?>> SoftReferenceObjectPool<T> createSoftReferenceObjectPool(
+            Supplier<T> connectionSupplier, boolean wrapConnections, Predicate<T> validationPredicate) {
 
         LettuceAssert.notNull(connectionSupplier, "Connection supplier must not be null");
 
         AtomicReference<Origin<T>> poolRef = new AtomicReference<>();
 
-        SoftReferenceObjectPool<T> pool = new SoftReferenceObjectPool<T>(new RedisPooledObjectFactory<>(connectionSupplier)) {
+        SoftReferenceObjectPool<T> pool = new SoftReferenceObjectPool<T>(
+                new RedisPooledObjectFactory<>(connectionSupplier, validationPredicate)) {
+
+            private final Lock lock = new ReentrantLock();
 
             @Override
-            public synchronized T borrowObject() throws Exception {
-                return wrapConnections ? ConnectionWrapping.wrapConnection(super.borrowObject(), poolRef.get())
-                        : super.borrowObject();
+            public T borrowObject() throws Exception {
+                lock.lock();
+                try {
+                    return wrapConnections ? ConnectionWrapping.wrapConnection(super.borrowObject(), poolRef.get())
+                            : super.borrowObject();
+                } finally {
+                    lock.unlock();
+                }
             }
 
             @Override
-            public synchronized void returnObject(T obj) throws Exception {
-
-                if (wrapConnections && obj instanceof HasTargetConnection) {
-                    super.returnObject((T) ((HasTargetConnection) obj).getTargetConnection());
-                    return;
+            public void returnObject(T obj) throws Exception {
+                lock.lock();
+                try {
+                    if (wrapConnections && obj instanceof HasTargetConnection) {
+                        super.returnObject((T) ((HasTargetConnection) obj).getTargetConnection());
+                        return;
+                    }
+                    super.returnObject(obj);
+                } finally {
+                    lock.unlock();
                 }
-                super.returnObject(obj);
             }
 
         };
@@ -202,8 +261,11 @@ public abstract class ConnectionPoolSupport {
 
         private final Supplier<T> connectionSupplier;
 
-        RedisPooledObjectFactory(Supplier<T> connectionSupplier) {
+        private final Predicate<T> validationPredicate;
+
+        RedisPooledObjectFactory(Supplier<T> connectionSupplier, Predicate<T> validationPredicate) {
             this.connectionSupplier = connectionSupplier;
+            this.validationPredicate = validationPredicate;
         }
 
         @Override
@@ -223,7 +285,7 @@ public abstract class ConnectionPoolSupport {
 
         @Override
         public boolean validateObject(PooledObject<T> p) {
-            return p.getObject().isOpen();
+            return this.validationPredicate.test(p.getObject());
         }
 
     }

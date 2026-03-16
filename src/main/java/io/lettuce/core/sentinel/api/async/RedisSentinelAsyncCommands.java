@@ -1,7 +1,11 @@
 /*
- * Copyright 2017-2022 the original author or authors.
+ * Copyright 2017-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -19,6 +23,7 @@ import java.net.SocketAddress;
 import java.util.List;
 import java.util.Map;
 
+import io.lettuce.core.ClientListArgs;
 import io.lettuce.core.KillArgs;
 import io.lettuce.core.RedisFuture;
 import io.lettuce.core.output.CommandOutput;
@@ -140,6 +145,16 @@ public interface RedisSentinelAsyncCommands<K, V> {
     RedisFuture<String> clientSetname(K name);
 
     /**
+     * Assign various info attributes to the current connection.
+     *
+     * @param key the key.
+     * @param value the value.
+     * @return simple-string-reply {@code OK} if the connection name was successfully set.
+     * @since 6.3
+     */
+    RedisFuture<String> clientSetinfo(String key, String value);
+
+    /**
      * Kill the connection of a client identified by ip:port.
      *
      * @param addr ip:port.
@@ -170,6 +185,24 @@ public interface RedisSentinelAsyncCommands<K, V> {
      *         each line is composed of a succession of property=value fields separated by a space character.
      */
     RedisFuture<String> clientList();
+
+    /**
+     * Get the list of client connections which are filtered by {@code clientListArgs}.
+     *
+     * @return String bulk-string-reply a unique string, formatted as follows: One client connection per line (separated by LF),
+     *         each line is composed of a succession of property=value fields separated by a space character.
+     * @since 6.3
+     */
+    RedisFuture<String> clientList(ClientListArgs clientListArgs);
+
+    /**
+     * Get the list of the current client connection.
+     *
+     * @return String bulk-string-reply a unique string, formatted as a succession of property=value fields separated by a space
+     *         character.
+     * @since 6.3
+     */
+    RedisFuture<String> clientInfo();
 
     /**
      * Get information and statistics about the server.
@@ -217,12 +250,8 @@ public interface RedisSentinelAsyncCommands<K, V> {
     <T> RedisFuture<T> dispatch(ProtocolKeyword type, CommandOutput<K, V, T> output, CommandArgs<K, V> args);
 
     /**
-     * @return {@code true} if the connection is open (connected and not closed).
-     */
-    boolean isOpen();
-
-    /**
      * @return the underlying connection.
      */
     StatefulRedisSentinelConnection<K, V> getStatefulConnection();
+
 }

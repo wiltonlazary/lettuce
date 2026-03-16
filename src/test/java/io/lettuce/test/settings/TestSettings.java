@@ -1,7 +1,11 @@
 /*
- * Copyright 2018-2022 the original author or authors.
+ * Copyright 2018-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -45,7 +49,7 @@ public class TestSettings {
      *         {@code -Ddomainsocket=YourSocket}
      */
     public static String socket() {
-        return System.getProperty("domainsocket", "work/socket-6479");
+        return System.getProperty("domainsocket", "work/socket-6482");
     }
 
     /**
@@ -150,6 +154,54 @@ public class TestSettings {
      * @return {@link #sslPort()} with added {@literal offset}
      */
     public static int sslPort(int offset) {
-        return sslPort() + offset;
+        int port = sslPort() + offset;
+        if (port == 7443) {
+            throw new IllegalStateException("Please use a different port than 7443. Thank you.");
+        }
+        return port;
     }
+
+    /**
+     *
+     * @return base port of the test proxy used for simulating network issues. Defaults to {@literal 9479}. Can be overridden
+     *         with {@code -Dproxy.port=1234}
+     */
+    public static int proxyPort() {
+        return Integer.parseInt(System.getProperty("proxy.port", "9479"));
+    }
+
+    /**
+     *
+     * @param offset
+     * @return {@link #proxyPort()} with added {@literal offset}
+     */
+    public static int proxyPort(int offset) {
+        return proxyPort() + offset;
+    }
+
+    /**
+     *
+     * @return admin port of the toxiproxy service. Defaults to {@literal 8474}. Can be overridden with
+     *         {@code -Dproxy.admin.port=8474}
+     */
+    public static int proxyAdminPort() {
+        return Integer.parseInt(System.getProperty("proxy.admin.port", "8474"));
+    }
+
+    /**
+     *
+     * @return port of the mTLS standalone Redis instance (redis-standalone-5-client-cert). Defaults to {@literal 6445}.
+     */
+    public static int mtlsStandalonePort() {
+        return sslPort(2); // 6445
+    }
+
+    /**
+     *
+     * @return port of the mTLS cluster (ssl-test-cluster). Defaults to {@literal 7443}.
+     */
+    public static int mtlsClusterPort() {
+        return 7443;
+    }
+
 }

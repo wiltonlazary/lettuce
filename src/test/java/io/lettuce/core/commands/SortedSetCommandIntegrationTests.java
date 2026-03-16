@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core.commands;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static io.lettuce.core.Range.Boundary.*;
 import static io.lettuce.core.ZStoreArgs.Builder.*;
 import static io.lettuce.core.ZStoreArgs.Builder.max;
@@ -24,12 +29,14 @@ import static java.lang.Double.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.assertj.core.data.Offset.offset;
 
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
 import javax.inject.Inject;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -49,6 +56,7 @@ import io.lettuce.test.condition.EnabledOnCommand;
  * @author dengliming
  * @author Mikhael Sokolov
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class SortedSetCommandIntegrationTests extends TestSupport {
@@ -292,6 +300,59 @@ public class SortedSetCommandIntegrationTests extends TestSupport {
     }
 
     @Test
+    @EnabledOnCommand("BZMPOP")
+    void bzmpop() {
+
+        redis.zadd("zset", 2.0, "a1", 3.0, "b1");
+        redis.zadd("other", 2.0, "a2", 3.0, "b2");
+
+        assertThat(redis.bzmpop(1, ZPopArgs.Builder.min(), "zset", "other"))
+                .isEqualTo(KeyValue.just("zset", ScoredValue.just(2.0, "a1")));
+        assertThat(redis.bzmpop(1, ZPopArgs.Builder.min(), "zset"))
+                .isEqualTo(KeyValue.just("zset", ScoredValue.just(3.0, "b1")));
+        assertThat(redis.bzmpop(0.01, ZPopArgs.Builder.min(), "does_not_exist")).isEqualTo(KeyValue.empty("does_not_exist"));
+        assertThat(redis.bzmpop(0.5, ZPopArgs.Builder.max(), "zset", "other"))
+                .isEqualTo(KeyValue.just("other", ScoredValue.just(3.0, "b2")));
+    }
+
+    @Test
+    @EnabledOnCommand("BZMPOP")
+    void bzmpopWithCount() {
+
+        redis.zadd("zset", 2.0, "a1", 3.0, "b1");
+
+        assertThat(redis.bzmpop(0.1, 2, ZPopArgs.Builder.min(), "zset"))
+                .isEqualTo(KeyValue.just("zset", Arrays.asList(ScoredValue.just(2.0, "a1"), ScoredValue.just(3.0, "b1"))));
+        assertThat(redis.bzmpop(0.1, 2, ZPopArgs.Builder.min(), "zset")).isEqualTo(KeyValue.empty("zset"));
+    }
+
+    @Test
+    @EnabledOnCommand("ZMPOP")
+    void zmpop() {
+
+        redis.zadd("zset", 2.0, "a1", 3.0, "b1");
+        redis.zadd("other", 2.0, "a2", 3.0, "b2");
+
+        assertThat(redis.zmpop(ZPopArgs.Builder.min(), "zset", "other"))
+                .isEqualTo(KeyValue.just("zset", ScoredValue.just(2.0, "a1")));
+        assertThat(redis.zmpop(ZPopArgs.Builder.min(), "zset")).isEqualTo(KeyValue.just("zset", ScoredValue.just(3.0, "b1")));
+        assertThat(redis.zmpop(ZPopArgs.Builder.min(), "does_not_exist")).isEqualTo(KeyValue.empty("does_not_exist"));
+        assertThat(redis.zmpop(ZPopArgs.Builder.max(), "zset", "other"))
+                .isEqualTo(KeyValue.just("other", ScoredValue.just(3.0, "b2")));
+    }
+
+    @Test
+    @EnabledOnCommand("ZMPOP")
+    void zmpopWithCount() {
+
+        redis.zadd("zset", 2.0, "a1", 3.0, "b1");
+
+        assertThat(redis.zmpop(2, ZPopArgs.Builder.min(), "zset"))
+                .isEqualTo(KeyValue.just("zset", Arrays.asList(ScoredValue.just(2.0, "a1"), ScoredValue.just(3.0, "b1"))));
+        assertThat(redis.zmpop(2, ZPopArgs.Builder.min(), "zset")).isEqualTo(KeyValue.empty("zset"));
+    }
+
+    @Test
     @EnabledOnCommand("ZPOPMIN")
     void zpopmin() {
 
@@ -506,6 +567,16 @@ public class SortedSetCommandIntegrationTests extends TestSupport {
     }
 
     @Test
+    @EnabledOnCommand("WAITAOF") // Redis 7.2
+    void zrankWithScore() {
+        assertThat(redis.zrankWithScore(key, "a")).isEqualTo(ScoredValue.empty());
+        setup();
+        assertThat(redis.zrankWithScore(key, "a")).isEqualTo(sv(1, 0));
+        assertThat(redis.zrankWithScore(key, "b")).isEqualTo(sv(2, 1));
+        assertThat(redis.zrankWithScore(key, "c")).isEqualTo(sv(3, 2));
+    }
+
+    @Test
     void zrem() {
         assertThat(redis.zrem(key, "a")).isEqualTo(0);
         setup();
@@ -693,6 +764,16 @@ public class SortedSetCommandIntegrationTests extends TestSupport {
         setup();
         assertThat(redis.zrevrank(key, "c")).isEqualTo(0);
         assertThat(redis.zrevrank(key, "a")).isEqualTo(2);
+    }
+
+    @Test
+    @EnabledOnCommand("WAITAOF") // Redis 7.2
+    void zrevrankWithScore() {
+        assertThat(redis.zrevrankWithScore(key, "a")).isEqualTo(ScoredValue.empty());
+        setup();
+        assertThat(redis.zrevrankWithScore(key, "c")).isEqualTo(sv(3, 0));
+        assertThat(redis.zrevrankWithScore(key, "b")).isEqualTo(sv(2, 1));
+        assertThat(redis.zrevrankWithScore(key, "a")).isEqualTo(sv(1, 2));
     }
 
     @Test

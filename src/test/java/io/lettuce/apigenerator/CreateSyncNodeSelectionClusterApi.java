@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -25,6 +29,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
@@ -33,6 +38,9 @@ import com.github.javaparser.ast.body.MethodDeclaration;
 import com.github.javaparser.ast.type.Type;
 
 import io.lettuce.core.internal.LettuceSets;
+
+import static io.lettuce.TestTags.API_GENERATOR;
+import static io.lettuce.TestTags.UNIT_TEST;
 
 /**
  * Create sync API based on the templates.
@@ -43,9 +51,12 @@ import io.lettuce.core.internal.LettuceSets;
 @SuppressWarnings("OptionalGetWithoutIsPresent")
 public class CreateSyncNodeSelectionClusterApi {
 
-    private static final Set<String> FILTER_TEMPLATES = LettuceSets.unmodifiableSet("RedisSentinelCommands", "RedisTransactionalCommands");
-    private static final Set<String> FILTER_METHODS = LettuceSets.unmodifiableSet("shutdown", "debugOom", "debugSegfault", "digest",
-            "close", "isOpen", "BaseRedisCommands.reset", "readOnly", "readWrite", "dispatch", "setAutoFlushCommands", "flushCommands");
+    private static final Set<String> FILTER_TEMPLATES = LettuceSets.unmodifiableSet("RedisSentinelCommands",
+            "RedisTransactionalCommands");
+
+    private static final Set<String> FILTER_METHODS = LettuceSets.unmodifiableSet("shutdown", "debugOom", "debugSegfault",
+            "digest", "close", "isOpen", "BaseRedisCommands.reset", "readOnly", "readWrite", "dispatch", "setAutoFlushCommands",
+            "flushCommands");
 
     /**
      * Mutate type comment.
@@ -90,19 +101,20 @@ public class CreateSyncNodeSelectionClusterApi {
 
     @ParameterizedTest
     @MethodSource("arguments")
+    @Tag(API_GENERATOR)
     void createInterface(String argument) throws Exception {
         createFactory(argument).createInterface();
     }
 
     static List<String> arguments() {
-        return Stream
-                .of(Constants.TEMPLATE_NAMES)
-                .filter(t -> !FILTER_TEMPLATES.contains(t))
-                .collect(Collectors.toList());
+        return Stream.of(Constants.TEMPLATE_NAMES).filter(t -> !FILTER_TEMPLATES.contains(t)).collect(Collectors.toList());
     }
 
     private CompilationUnitFactory createFactory(String templateName) {
         String targetName = templateName.replace("Redis", "NodeSelection");
+        if (targetName.equals(templateName)) {
+            targetName = templateName.replace("Redi", "NodeSelection");
+        }
         File templateFile = new File(Constants.TEMPLATES, "io/lettuce/core/api/" + templateName + ".java");
         String targetPackage = "io.lettuce.core.cluster.api.sync";
 
@@ -112,4 +124,5 @@ public class CreateSyncNodeSelectionClusterApi {
         factory.keepMethodSignaturesFor(FILTER_METHODS);
         return factory;
     }
+
 }

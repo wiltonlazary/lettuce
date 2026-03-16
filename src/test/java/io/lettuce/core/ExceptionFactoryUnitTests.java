@@ -1,7 +1,11 @@
 /*
- * Copyright 2017-2022 the original author or authors.
+ * Copyright 2017-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,10 +19,12 @@
  */
 package io.lettuce.core;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
 
 import java.time.Duration;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import io.lettuce.core.internal.ExceptionFactory;
@@ -29,6 +35,7 @@ import io.lettuce.core.internal.ExceptionFactory;
  * @author Mark Paluch
  * @author Tobias Nehrlich
  */
+@Tag(UNIT_TEST)
 class ExceptionFactoryUnitTests {
 
     @Test
@@ -59,8 +66,8 @@ class ExceptionFactoryUnitTests {
         assertThat(ExceptionFactory.createExecutionException("ERR foo bar", new IllegalStateException()))
                 .isInstanceOf(RedisCommandExecutionException.class).hasMessage("ERR foo bar")
                 .hasRootCauseInstanceOf(IllegalStateException.class);
-        assertThat(ExceptionFactory.createExecutionException(null, new IllegalStateException())).isInstanceOf(
-                RedisCommandExecutionException.class).hasRootCauseInstanceOf(IllegalStateException.class);
+        assertThat(ExceptionFactory.createExecutionException(null, new IllegalStateException()))
+                .isInstanceOf(RedisCommandExecutionException.class).hasRootCauseInstanceOf(IllegalStateException.class);
     }
 
     @Test
@@ -102,10 +109,11 @@ class ExceptionFactoryUnitTests {
     @Test
     void shouldFormatToMinmalApplicableTimeunit() {
 
-        assertThat(ExceptionFactory.formatTimeout(Duration.ofMinutes(2).plus(Duration.ofSeconds(10)))).isEqualTo(
-                "130 second(s)");
-        assertThat(ExceptionFactory.formatTimeout(Duration.ofSeconds(2).plus(Duration.ofMillis(5)))).isEqualTo(
-                "2005 millisecond(s)");
+        assertThat(ExceptionFactory.formatTimeout(Duration.ofMinutes(2).plus(Duration.ofSeconds(10))))
+                .isEqualTo("130 second(s)");
+        assertThat(ExceptionFactory.formatTimeout(Duration.ofSeconds(2).plus(Duration.ofMillis(5))))
+                .isEqualTo("2005 millisecond(s)");
         assertThat(ExceptionFactory.formatTimeout(Duration.ofNanos(2))).isEqualTo("2 ns");
     }
+
 }

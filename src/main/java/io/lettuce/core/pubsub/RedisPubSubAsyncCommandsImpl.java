@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -30,6 +34,7 @@ import io.lettuce.core.pubsub.api.async.RedisPubSubAsyncCommands;
  * @param <V> Value type.
  * @author Will Glozer
  * @author Mark Paluch
+ * @author Ali Takavci
  */
 public class RedisPubSubAsyncCommandsImpl<K, V> extends RedisAsyncCommandsImpl<K, V> implements RedisPubSubAsyncCommands<K, V> {
 
@@ -42,7 +47,7 @@ public class RedisPubSubAsyncCommandsImpl<K, V> extends RedisAsyncCommandsImpl<K
      * @param codec Codec used to encode/decode keys and values.
      */
     public RedisPubSubAsyncCommandsImpl(StatefulRedisPubSubConnection<K, V> connection, RedisCodec<K, V> codec) {
-        super(connection, codec);
+        super(connection, codec, null);
         this.commandBuilder = new PubSubCommandBuilder<>(codec);
     }
 
@@ -83,6 +88,33 @@ public class RedisPubSubAsyncCommandsImpl<K, V> extends RedisAsyncCommandsImpl<K
     @Override
     public RedisFuture<Map<K, Long>> pubsubNumsub(K... channels) {
         return dispatch(commandBuilder.pubsubNumsub(channels));
+    }
+
+    @Override
+    public RedisFuture<List<K>> pubsubShardChannels(K pattern) {
+        return dispatch(commandBuilder.pubsubShardChannels(pattern));
+    }
+
+    @Override
+    public RedisFuture<Map<K, Long>> pubsubShardNumsub(K... shardChannels) {
+        return dispatch(commandBuilder.pubsubShardNumsub(shardChannels));
+    }
+
+    @Override
+    public RedisFuture<Long> spublish(K shardChannel, V message) {
+        return dispatch(commandBuilder.spublish(shardChannel, message));
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public RedisFuture<Void> ssubscribe(K... channels) {
+        return (RedisFuture<Void>) dispatch(commandBuilder.ssubscribe(channels));
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public RedisFuture<Void> sunsubscribe(K... channels) {
+        return (RedisFuture<Void>) dispatch(commandBuilder.sunsubscribe(channels));
     }
 
     @Override

@@ -1,36 +1,19 @@
-/*
- * Copyright 2018-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.test;
 
-import java.lang.reflect.UndeclaredThrowableException;
 import java.util.Queue;
 
 import io.lettuce.test.ReflectionTestUtils;
 
 import io.lettuce.core.RedisChannelHandler;
 import io.lettuce.core.RedisChannelWriter;
-import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulConnection;
-import io.lettuce.core.api.StatefulRedisConnection;
-import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.protocol.CommandHandler;
 import io.lettuce.core.protocol.ConnectionWatchdog;
 import io.lettuce.core.protocol.DefaultEndpoint;
-import io.lettuce.test.settings.TestSettings;
+import io.lettuce.core.protocol.MaintenanceAwareConnectionWatchdog;
 import io.netty.channel.Channel;
+import io.netty.util.internal.logging.InternalLogger;
+import io.netty.util.internal.logging.InternalLoggerFactory;
 
 /**
  * @author Mark Paluch
@@ -39,7 +22,8 @@ import io.netty.channel.Channel;
 public class ConnectionTestUtil {
 
     /**
-     * Extract the {@link Channel} from a {@link StatefulConnection}.
+     * Extract the {@link Channel} from a {@link StatefulConnection}. Handles MaintenanceAwareExpiryWriter delegation
+     * automatically.
      *
      * @param connection the connection
      * @return the {@link Channel}
@@ -47,7 +31,17 @@ public class ConnectionTestUtil {
     public static Channel getChannel(StatefulConnection<?, ?> connection) {
 
         RedisChannelHandler<?, ?> channelHandler = (RedisChannelHandler<?, ?>) connection;
-        return (Channel) ReflectionTestUtils.getField(channelHandler.getChannelWriter(), "channel");
+        RedisChannelWriter writer = channelHandler.getChannelWriter();
+
+        // Handle MaintenanceAwareExpiryWriter which wraps the real channel writer
+        if (writer.getClass().getSimpleName().equals("MaintenanceAwareExpiryWriter")) {
+            // Get the delegate field from MaintenanceAwareExpiryWriter
+            RedisChannelWriter delegate = ReflectionTestUtils.getField(writer, "delegate");
+            return (Channel) ReflectionTestUtils.getField(delegate, "channel");
+        } else {
+            // Use the standard approach for regular writers
+            return (Channel) ReflectionTestUtils.getField(writer, "channel");
+        }
     }
 
     /**
@@ -163,4 +157,98 @@ public class ConnectionTestUtil {
 
         return "";
     }
+
+    /**
+     * Verify the connection and command stack state during maintenance. Logs detailed channel state, rebind attribute, and
+     * command stack information.
+     *
+     * @param connection the connection to verify
+     * @param context descriptive context for logging
+     * @return {@link StackVerificationResult} containing verification details
+     */
+    public static StackVerificationResult verifyConnectionAndStackState(StatefulConnection<?, ?> connection, String context) {
+        InternalLogger log = InternalLoggerFactory.getInstance(ConnectionTestUtil.class);
+
+        log.info("=== CONNECTION AND STACK VERIFICATION: {} ===", context);
+
+        Channel channel = getChannel(connection);
+        Queue<Object> stack = getStack(connection);
+
+        log.info("Channel: {}", channel);
+        log.info("Channel active: {}", channel.isActive());
+        log.info("Channel registered: {}", channel.isRegistered());
+
+        boolean hasRebindAttribute = false;
+        Object rebindState = null;
+        if (channel.hasAttr(MaintenanceAwareConnectionWatchdog.REBIND_ATTRIBUTE)) {
+            rebindState = channel.attr(MaintenanceAwareConnectionWatchdog.REBIND_ATTRIBUTE).get();
+            hasRebindAttribute = true;
+            log.info("Rebind attribute present: true, state: {}", rebindState);
+        } else {
+            log.info("Rebind attribute present: false");
+        }
+
+        int stackSize = stack.size();
+        log.info("Command stack size: {}", stackSize);
+
+        if (stackSize > 0) {
+            log.info("Command stack contents:");
+            int i = 0;
+            for (Object command : stack) {
+                log.info("  [{}]: {}", i++, command);
+            }
+        }
+
+        log.info("=== END VERIFICATION: {} ===", context);
+
+        return new StackVerificationResult(channel.isActive(), channel.isRegistered(), hasRebindAttribute, rebindState,
+                stackSize);
+    }
+
+    /**
+     * Result of connection and stack verification.
+     */
+    public static class StackVerificationResult {
+
+        private final boolean channelActive;
+
+        private final boolean channelRegistered;
+
+        private final boolean hasRebindAttribute;
+
+        private final Object rebindState;
+
+        private final int stackSize;
+
+        public StackVerificationResult(boolean channelActive, boolean channelRegistered, boolean hasRebindAttribute,
+                Object rebindState, int stackSize) {
+            this.channelActive = channelActive;
+            this.channelRegistered = channelRegistered;
+            this.hasRebindAttribute = hasRebindAttribute;
+            this.rebindState = rebindState;
+            this.stackSize = stackSize;
+        }
+
+        public boolean isChannelActive() {
+            return channelActive;
+        }
+
+        public boolean isChannelRegistered() {
+            return channelRegistered;
+        }
+
+        public boolean hasRebindAttribute() {
+            return hasRebindAttribute;
+        }
+
+        public Object getRebindState() {
+            return rebindState;
+        }
+
+        public int getStackSize() {
+            return stackSize;
+        }
+
+    }
+
 }

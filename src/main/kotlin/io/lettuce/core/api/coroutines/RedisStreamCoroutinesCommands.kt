@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -92,6 +96,16 @@ interface RedisStreamCoroutinesCommands<K : Any, V : Any> {
      * @since 6.1
      */
     suspend fun xautoclaim(key: K, args: XAutoClaimArgs<K>): ClaimedMessages<K, V>?
+
+    /**
+     * Configure idempotency parameters for a stream.
+     *
+     * @param key the stream key.
+     * @param args configuration arguments.
+     * @return simple-reply OK.
+     * @since 7.3
+     */
+    suspend fun xcfgset(key: K, args: XCfgSetArgs): String?
 
     /**
      * Gets ownership of one or multiple messages in the Pending Entries List of a given stream consumer group.

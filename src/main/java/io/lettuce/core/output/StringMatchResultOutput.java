@@ -1,7 +1,11 @@
 /*
- * Copyright 2018-2022 the original author or authors.
+ * Copyright 2018-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,15 +19,17 @@
  */
 package io.lettuce.core.output;
 
-import static io.lettuce.core.StringMatchResult.MatchedPosition;
-import static io.lettuce.core.StringMatchResult.Position;
+import io.lettuce.core.StringMatchResult;
+import io.lettuce.core.codec.RedisCodec;
+import io.lettuce.core.protocol.CommandKeyword;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-import io.lettuce.core.StringMatchResult;
-import io.lettuce.core.codec.RedisCodec;
+import static io.lettuce.core.StringMatchResult.MatchedPosition;
+import static io.lettuce.core.StringMatchResult.Position;
 
 /**
  * Command output for {@code STRALGO} returning {@link StringMatchResult}.
@@ -33,7 +39,7 @@ import io.lettuce.core.codec.RedisCodec;
  */
 public class StringMatchResultOutput<K, V> extends CommandOutput<K, V, StringMatchResult> {
 
-    private final boolean withIdx;
+    private static final ByteBuffer LEN = StandardCharsets.US_ASCII.encode(CommandKeyword.LEN.toString().toLowerCase());
 
     private String matchString;
 
@@ -41,30 +47,31 @@ public class StringMatchResultOutput<K, V> extends CommandOutput<K, V, StringMat
 
     private List<Long> positions;
 
+    private boolean readingLen = true;
+
     private final List<MatchedPosition> matchedPositions = new ArrayList<>();
 
-    public StringMatchResultOutput(RedisCodec<K, V> codec, boolean withIdx) {
+    public StringMatchResultOutput(RedisCodec<K, V> codec) {
         super(codec, null);
-        this.withIdx = withIdx;
     }
 
     @Override
     public void set(ByteBuffer bytes) {
-
-        if (!withIdx && matchString == null) {
-            matchString = (String) codec.decodeKey(bytes);
-        }
+        matchString = (String) codec.decodeKey(bytes);
+        readingLen = LEN.equals(bytes);
     }
 
     @Override
     public void set(long integer) {
-
-        this.len = (int) integer;
-
-        if (positions == null) {
-            positions = new ArrayList<>();
+        if (readingLen) {
+            this.len = (int) integer;
+        } else {
+            if (positions == null) {
+                positions = new ArrayList<>();
+            }
+            positions.add(integer);
         }
-        positions.add(integer);
+        matchString = null;
     }
 
     @Override

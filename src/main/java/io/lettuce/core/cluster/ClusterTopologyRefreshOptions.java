@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -29,14 +33,18 @@ import io.lettuce.core.internal.LettuceAssert;
  * Options to control the Cluster topology refreshing of {@link RedisClusterClient}.
  *
  * @author Mark Paluch
+ * @author Tihomir Mateev
  * @since 4.2
  */
 public class ClusterTopologyRefreshOptions {
 
-    public static final Set<RefreshTrigger> DEFAULT_ADAPTIVE_REFRESH_TRIGGERS = Collections.emptySet();
+    /** Since Lettuce 7.0 all adaptive triggers are enabled by default */
+    public static final Set<RefreshTrigger> DEFAULT_ADAPTIVE_REFRESH_TRIGGERS = EnumSet.allOf(RefreshTrigger.class);
 
-    public static final long DEFAULT_ADAPTIVE_REFRESH_TIMEOUT = 30;
+    /** Since Lettuce 7.0 the default adaptive refresh timeout is 5 seconds */
+    public static final long DEFAULT_ADAPTIVE_REFRESH_TIMEOUT = 5;
 
+    @Deprecated
     public static final TimeUnit DEFAULT_ADAPTIVE_REFRESH_TIMEOUT_UNIT = TimeUnit.SECONDS;
 
     public static final Duration DEFAULT_ADAPTIVE_REFRESH_TIMEOUT_DURATION = Duration
@@ -50,6 +58,7 @@ public class ClusterTopologyRefreshOptions {
 
     public static final long DEFAULT_REFRESH_PERIOD = 60;
 
+    @Deprecated
     public static final TimeUnit DEFAULT_REFRESH_PERIOD_UNIT = TimeUnit.SECONDS;
 
     public static final Duration DEFAULT_REFRESH_PERIOD_DURATION = Duration.ofSeconds(DEFAULT_REFRESH_PERIOD);
@@ -114,7 +123,7 @@ public class ClusterTopologyRefreshOptions {
     /**
      * Create a new {@link ClusterTopologyRefreshOptions} using default settings.
      *
-     * @return a new instance of default cluster client client options.
+     * @return a new instance of default cluster client options.
      */
     public static ClusterTopologyRefreshOptions create() {
         return builder().build();
@@ -123,7 +132,7 @@ public class ClusterTopologyRefreshOptions {
     /**
      * Create a new {@link ClusterTopologyRefreshOptions} using default settings with enabled periodic and adaptive refresh.
      *
-     * @return a new instance of default cluster client client options.
+     * @return a new instance of default cluster client options.
      */
     public static ClusterTopologyRefreshOptions enabled() {
         return builder().enablePeriodicRefresh().enableAllAdaptiveRefreshTriggers().build();
@@ -155,16 +164,21 @@ public class ClusterTopologyRefreshOptions {
          * Enables adaptive topology refreshing using one or more {@link RefreshTrigger triggers}. Adaptive refresh triggers
          * initiate topology view updates based on events happened during Redis Cluster operations. Adaptive triggers lead to an
          * immediate topology refresh. Adaptive triggered refreshes are rate-limited using a timeout since events can happen on
-         * a large scale. Adaptive refresh triggers are disabled by default. See also
+         * a large scale. Adaptive refresh triggers are all enabled by default. See also
          * {@link #adaptiveRefreshTriggersTimeout(long, TimeUnit)} and {@link RefreshTrigger}.
          *
          * @param refreshTrigger one or more {@link RefreshTrigger} to enabled
          * @return {@code this}
+         * @deprecated Starting from 7.0, this method has no effect as all adaptive triggers are enabled by default.
+         * @see #disableAllAdaptiveRefreshTriggers()
+         * @see #disableAdaptiveRefreshTrigger(RefreshTrigger...)
          */
+        @Deprecated
         public Builder enableAdaptiveRefreshTrigger(RefreshTrigger... refreshTrigger) {
 
             LettuceAssert.notNull(refreshTrigger, "RefreshTriggers must not be null");
             LettuceAssert.noNullElements(refreshTrigger, "RefreshTriggers must not contain null elements");
+            LettuceAssert.notEmpty(refreshTrigger, "RefreshTriggers must contain at least one element");
 
             adaptiveRefreshTriggers.addAll(Arrays.asList(refreshTrigger));
             return this;
@@ -174,13 +188,53 @@ public class ClusterTopologyRefreshOptions {
          * Enables adaptive topology refreshing using all {@link RefreshTrigger triggers}. Adaptive refresh triggers initiate
          * topology view updates based on events happened during Redis Cluster operations. Adaptive triggers lead to an
          * immediate topology refresh. Adaptive triggered refreshes are rate-limited using a timeout since events can happen on
-         * a large scale. Adaptive refresh triggers are disabled by default. See also
+         * a large scale. Adaptive refresh triggers are all enabled by default. See also
          * {@link #adaptiveRefreshTriggersTimeout(long, TimeUnit)} and {@link RefreshTrigger}.
          *
          * @return {@code this}
+         * @deprecated Starting from 7.0, this method has no effect as all adaptive triggers are enabled by default.
+         * @see #disableAllAdaptiveRefreshTriggers()
+         * @see #disableAdaptiveRefreshTrigger(RefreshTrigger...)
          */
+        @Deprecated
         public Builder enableAllAdaptiveRefreshTriggers() {
             adaptiveRefreshTriggers.addAll(EnumSet.allOf(RefreshTrigger.class));
+            return this;
+        }
+
+        /**
+         * Disables adaptive topology refreshing using one or more {@link RefreshTrigger triggers}. Adaptive refresh triggers
+         * initiate topology view updates based on events happened during Redis Cluster operations. Adaptive triggers lead to an
+         * immediate topology refresh. Adaptive triggered refreshes are rate-limited using a timeout since events can happen on
+         * a large scale. Adaptive refresh triggers are all enabled by default. See also
+         * {@link #adaptiveRefreshTriggersTimeout(long, TimeUnit)} and {@link RefreshTrigger}.
+         *
+         * @param refreshTrigger one or more {@link RefreshTrigger} to enabled
+         * @return {@code this}
+         * @since 7.0
+         */
+        public Builder disableAdaptiveRefreshTrigger(RefreshTrigger... refreshTrigger) {
+
+            LettuceAssert.notNull(refreshTrigger, "RefreshTriggers must not be null");
+            LettuceAssert.noNullElements(refreshTrigger, "RefreshTriggers must not contain null elements");
+            LettuceAssert.notEmpty(refreshTrigger, "RefreshTriggers must contain at least one element");
+
+            Arrays.asList(refreshTrigger).forEach(adaptiveRefreshTriggers::remove);
+            return this;
+        }
+
+        /**
+         * Disables adaptive topology refreshing using all {@link RefreshTrigger triggers}. Adaptive refresh triggers initiate
+         * topology view updates based on events happened during Redis Cluster operations. Adaptive triggers lead to an
+         * immediate topology refresh. Adaptive triggered refreshes are rate-limited using a timeout since events can happen on
+         * a large scale. Adaptive refresh triggers are all enabled by default. See also
+         * {@link #adaptiveRefreshTriggersTimeout(long, TimeUnit)} and {@link RefreshTrigger}.
+         *
+         * @return {@code this}
+         * @since 7.0
+         */
+        public Builder disableAllAdaptiveRefreshTriggers() {
+            adaptiveRefreshTriggers.clear();
             return this;
         }
 
@@ -236,10 +290,11 @@ public class ClusterTopologyRefreshOptions {
 
         /**
          * Discover cluster nodes from topology and use the discovered nodes as source for the cluster topology. Using dynamic
-         * refresh will query all discovered nodes for the cluster topology and calculate the number of clients for each node.If
-         * set to {@code false}, only the initial seed nodes will be used as sources for topology discovery and the number of
-         * clients will be obtained only for the initial seed nodes. This can be useful when using Redis Cluster with many
-         * nodes. Defaults to {@code true}. See {@link ClusterTopologyRefreshOptions#DEFAULT_DYNAMIC_REFRESH_SOURCES}.
+         * refresh will query all discovered nodes for the cluster topology and calculate the number of clients for each node.
+         * If set to {@code false}, only the initial seed nodes will be used as sources for topology discovery and the number of
+         * clients including response latency will be obtained only for the initial seed nodes. This can be useful when using
+         * Redis Cluster with many nodes. Defaults to {@code true}. See
+         * {@link ClusterTopologyRefreshOptions#DEFAULT_DYNAMIC_REFRESH_SOURCES}.
          *
          * @param dynamicRefreshSources {@code true} to discover and query all cluster nodes for obtaining the cluster topology
          * @return {@code this}
@@ -381,8 +436,8 @@ public class ClusterTopologyRefreshOptions {
     }
 
     /**
-     * Flag, whether to close stale connections when refreshing the cluster topology. Defaults to {@code true}. Comes only
-     * into effect if {@link #isPeriodicRefreshEnabled()} is {@code true}.
+     * Flag, whether to close stale connections when refreshing the cluster topology. Defaults to {@code true}. Comes only into
+     * effect if {@link #isPeriodicRefreshEnabled()} is {@code true}.
      *
      * @return {@code true} if stale connections are cleaned up after cluster topology updates
      */
@@ -392,9 +447,11 @@ public class ClusterTopologyRefreshOptions {
 
     /**
      * Discover cluster nodes from topology and use the discovered nodes as source for the cluster topology. Using dynamic
-     * refresh will query all discovered nodes for the cluster topology and calculate the number of clients for each node.If set
-     * to {@code false}, only the initial seed nodes will be used as sources for topology discovery and the number of clients
-     * will be obtained only for the initial seed nodes. This can be useful when using Redis Cluster with many nodes.
+     * refresh will query all discovered nodes for the cluster topology and calculate the number of clients for each node. If
+     * set to {@code false}, only the initial seed nodes will be used as sources for topology discovery and the number of
+     * clients including response latency will be obtained only for the initial seed nodes. This can be useful when using Redis
+     * Cluster with many nodes. Defaults to {@code true}. See
+     * {@link ClusterTopologyRefreshOptions#DEFAULT_DYNAMIC_REFRESH_SOURCES}.
      *
      * @return {@code true} if dynamic refresh sources are enabled
      */

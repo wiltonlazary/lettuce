@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -127,8 +131,7 @@ class DefaultClusterTopologyRefresh implements ClusterTopologyRefresh {
                                         .requestTopology(commandTimeoutNs, TimeUnit.NANOSECONDS).mergeWith(requestedTopology);
                                 Requests additionalInfo = newConnections.requestInfo(commandTimeoutNs, TimeUnit.NANOSECONDS)
                                         .mergeWith(requestedInfo);
-                                return CompletableFuture
-                                        .allOf(additionalTopology.allCompleted(), additionalInfo.allCompleted())
+                                return CompletableFuture.allOf(additionalTopology.allCompleted(), additionalInfo.allCompleted())
                                         .thenApplyAsync(ignore2 -> getNodeSpecificViews(additionalTopology, additionalInfo),
                                                 clientResources.eventExecutorGroup());
                             });
@@ -304,11 +307,14 @@ class DefaultClusterTopologyRefresh implements ClusterTopologyRefresh {
 
         for (RedisURI redisURI : redisURIs) {
 
-            if (redisURI.getHost() == null || tracker.contains(redisURI) || !isEventLoopActive()) {
-                continue;
-            }
+            CompletableFuture<StatefulRedisConnection<String, String>> sync = new CompletableFuture<>();
 
             try {
+
+                if (redisURI.getHost() == null || tracker.contains(redisURI) || !isEventLoopActive()) {
+                    continue;
+                }
+
                 SocketAddress socketAddress = clientResources.socketAddressResolver().resolve(redisURI);
 
                 ConnectionFuture<StatefulRedisConnection<String, String>> connectionFuture = nodeConnectionFactory
@@ -316,7 +322,6 @@ class DefaultClusterTopologyRefresh implements ClusterTopologyRefresh {
 
                 // Note: timeout skew due to potential socket address resolution and connection work possible.
 
-                CompletableFuture<StatefulRedisConnection<String, String>> sync = new CompletableFuture<>();
                 Timeout cancelTimeout = clientResources.timer().newTimeout(it -> {
 
                     String message = String.format("Unable to connect to [%s]: Timeout after %s", socketAddress,
@@ -357,7 +362,10 @@ class DefaultClusterTopologyRefresh implements ClusterTopologyRefresh {
 
                 tracker.addConnection(redisURI, sync);
             } catch (RuntimeException e) {
-                logger.warn(String.format("Unable to connect to [%s]", redisURI), e);
+                String message = String.format("Unable to connect to [%s]", redisURI);
+                logger.warn(message, e);
+                sync.completeExceptionally(new RedisConnectionException(message, e));
+                tracker.addConnection(redisURI, sync);
             }
         }
     }
@@ -503,7 +511,7 @@ class DefaultClusterTopologyRefresh implements ClusterTopologyRefresh {
         }
 
         @Override
-        public synchronized Throwable fillInStackTrace() {
+        public Throwable fillInStackTrace() {
             return this;
         }
 

@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -32,6 +36,8 @@ import io.lettuce.core.pubsub.api.reactive.RedisPubSubReactiveCommands;
 import io.lettuce.core.pubsub.api.sync.RedisPubSubCommands;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 
+import static io.lettuce.core.ClientOptions.DEFAULT_JSON_PARSER;
+
 /**
  * An thread-safe pub/sub connection to a Redis server. Multiple threads may share one {@link StatefulRedisPubSubConnectionImpl}
  *
@@ -58,9 +64,9 @@ public class StatefulRedisPubSubConnectionImpl<K, V> extends StatefulRedisConnec
     public StatefulRedisPubSubConnectionImpl(PubSubEndpoint<K, V> endpoint, RedisChannelWriter writer, RedisCodec<K, V> codec,
             Duration timeout) {
 
-        super(writer, endpoint, codec, timeout);
-
+        super(writer, endpoint, codec, timeout, DEFAULT_JSON_PARSER);
         this.endpoint = endpoint;
+        endpoint.setConnectionState(getConnectionState());
     }
 
     /**
@@ -124,6 +130,10 @@ public class StatefulRedisPubSubConnectionImpl<K, V> extends StatefulRedisConnec
 
         if (endpoint.hasChannelSubscriptions()) {
             result.add(async().subscribe(toArray(endpoint.getChannels())));
+        }
+
+        if (endpoint.hasShardChannelSubscriptions()) {
+            result.add(async().ssubscribe(toArray(endpoint.getShardChannels())));
         }
 
         if (endpoint.hasPatternSubscriptions()) {

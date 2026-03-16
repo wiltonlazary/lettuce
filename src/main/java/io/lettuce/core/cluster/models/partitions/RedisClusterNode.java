@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -41,6 +45,7 @@ import io.lettuce.core.models.role.RedisNodeDescription;
  *
  * @author Mark Paluch
  * @author Alessandro Simi
+ * @author Tony Zhang
  * @since 3.0
  */
 @SuppressWarnings("serial")
@@ -99,8 +104,11 @@ public class RedisClusterNode implements Serializable, RedisNodeDescription {
         this.configEpoch = configEpoch;
         this.replOffset = -1;
 
-        this.slots = new BitSet(slots.length());
-        this.slots.or(slots);
+        this.slots = new BitSet(SlotHash.SLOT_COUNT);
+
+        if (slots != null) {
+            this.slots.or(slots);
+        }
 
         setFlags(flags);
     }
@@ -119,8 +127,9 @@ public class RedisClusterNode implements Serializable, RedisNodeDescription {
         this.replOffset = redisClusterNode.replOffset;
         this.aliases.addAll(redisClusterNode.aliases);
 
-        if (redisClusterNode.slots != null && !redisClusterNode.slots.isEmpty()) {
-            this.slots = new BitSet(SlotHash.SLOT_COUNT);
+        this.slots = new BitSet(SlotHash.SLOT_COUNT);
+
+        if (redisClusterNode.slots != null) {
             this.slots.or(redisClusterNode.slots);
         }
 
@@ -284,6 +293,15 @@ public class RedisClusterNode implements Serializable, RedisNodeDescription {
         }
 
         return slots;
+    }
+
+    /**
+     * Checks if the node has no slots assigned.
+     *
+     * @return {@code true} if the slots field is null or empty, {@code false} otherwise.
+     */
+    public boolean hasNoSlots() {
+        return slots == null || slots.isEmpty();
     }
 
     /**

@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core.cluster;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -23,11 +28,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 
+import io.lettuce.core.RedisChannelWriter;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentMatchers;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
@@ -35,9 +41,12 @@ import org.mockito.quality.Strictness;
 
 import io.lettuce.core.ClientOptions;
 import io.lettuce.core.CommandListenerWriter;
+import io.lettuce.core.RedisURI;
 import io.lettuce.core.StatefulRedisConnectionImpl;
 import io.lettuce.core.TimeoutOptions;
 import io.lettuce.core.api.StatefulRedisConnection;
+import io.lettuce.core.cluster.models.partitions.Partitions;
+import io.lettuce.core.cluster.models.partitions.RedisClusterNode;
 import io.lettuce.core.codec.StringCodec;
 import io.lettuce.core.event.EventBus;
 import io.lettuce.core.internal.HostAndPort;
@@ -57,7 +66,9 @@ import io.lettuce.core.resource.ClientResources;
  *
  * @author Mark Paluch
  * @author koisyu
+ * @author Jim Brunner
  */
+@Tag(UNIT_TEST)
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class ClusterDistributionChannelWriterUnitTests {
@@ -70,6 +81,8 @@ class ClusterDistributionChannelWriterUnitTests {
 
     @Mock
     private ClientResources clientResources;
+
+    private ClientOptions clientOptions = ClientOptions.create();
 
     @Mock
     private ClusterEventListener clusterEventListener;
@@ -86,13 +99,15 @@ class ClusterDistributionChannelWriterUnitTests {
     @Mock
     private PooledClusterConnectionProvider pooledClusterConnectionProvider;
 
-    @InjectMocks
     private ClusterDistributionChannelWriter clusterDistributionChannelWriter;
 
     @BeforeEach
     void setUp() {
         when(defaultWriter.getClientResources()).thenReturn(clientResources);
         when(clientResources.eventBus()).thenReturn(eventBus);
+
+        clusterDistributionChannelWriter = new ClusterDistributionChannelWriter(defaultWriter, clientOptions,
+                clusterEventListener);
     }
 
     @Test
@@ -116,16 +131,42 @@ class ClusterDistributionChannelWriterUnitTests {
     @Test
     void shouldParseMovedTargetCorrectly() {
 
-        HostAndPort moveTarget = ClusterDistributionChannelWriter.getMoveTarget("MOVED 1234-2020 127.0.0.1:6381");
+        HostAndPort moveTarget = ClusterDistributionChannelWriter.getMoveTarget(new Partitions(),
+                "MOVED 1234-2020 127.0.0.1:6381");
 
         assertThat(moveTarget.getHostText()).isEqualTo("127.0.0.1");
         assertThat(moveTarget.getPort()).isEqualTo(6381);
     }
 
     @Test
+    void shouldParseMovedTargetWithoutHostnameCorrectly() {
+
+        Partitions partitions = new Partitions();
+        partitions.add(new RedisClusterNode(RedisURI.create("redis://1.2.3.4:6381"), "foo", false, null, 0, 0, 0,
+                Collections.emptyList(), Collections.emptySet()));
+        HostAndPort moveTarget = ClusterDistributionChannelWriter.getMoveTarget(partitions, "MOVED 1234 :6381");
+
+        assertThat(moveTarget.getHostText()).isEqualTo("1.2.3.4");
+        assertThat(moveTarget.getPort()).isEqualTo(6381);
+    }
+
+    @Test
+    void shouldParseMovedTargetWithoutHostnameUsingSlotFallbackCorrectly() {
+
+        Partitions partitions = new Partitions();
+        partitions.add(new RedisClusterNode(RedisURI.create("redis://1.2.3.4:5678"), "foo", false, null, 0, 0, 0,
+                Collections.singletonList(1234), Collections.emptySet()));
+        HostAndPort moveTarget = ClusterDistributionChannelWriter.getMoveTarget(partitions, "MOVED 1234 :6381");
+
+        assertThat(moveTarget.getHostText()).isEqualTo("1.2.3.4");
+        assertThat(moveTarget.getPort()).isEqualTo(6381);
+    }
+
+    @Test
     void shouldParseIPv6MovedTargetCorrectly() {
 
-        HostAndPort moveTarget = ClusterDistributionChannelWriter.getMoveTarget("MOVED 1234-2020 1:2:3:4::6:6381");
+        HostAndPort moveTarget = ClusterDistributionChannelWriter.getMoveTarget(new Partitions(),
+                "MOVED 1234-2020 1:2:3:4::6:6381");
 
         assertThat(moveTarget.getHostText()).isEqualTo("1:2:3:4::6");
         assertThat(moveTarget.getPort()).isEqualTo(6381);
@@ -134,40 +175,52 @@ class ClusterDistributionChannelWriterUnitTests {
     @Test
     void shouldReturnIntentForWriteCommand() {
 
+        ClusterDistributionChannelWriter writer = new ClusterDistributionChannelWriter(clusterDistributionChannelWriter,
+                clientOptions, clusterEventListener);
+
         RedisCommand<String, String, String> set = new Command<>(CommandType.SET, null);
         RedisCommand<String, String, String> mset = new Command<>(CommandType.MSET, null);
 
-        assertThat(ClusterDistributionChannelWriter.getIntent(Arrays.asList(set, mset))).isEqualTo(ConnectionIntent.WRITE);
+        assertThat(writer.getIntent(Arrays.asList(set, mset))).isEqualTo(ConnectionIntent.WRITE);
 
-        assertThat(ClusterDistributionChannelWriter.getIntent(Collections.singletonList(set))).isEqualTo(ConnectionIntent.WRITE);
+        assertThat(writer.getIntent(Collections.singletonList(set))).isEqualTo(ConnectionIntent.WRITE);
     }
 
     @Test
     void shouldReturnDefaultIntentForNoCommands() {
 
-        assertThat(ClusterDistributionChannelWriter.getIntent(Collections.emptyList())).isEqualTo(ConnectionIntent.WRITE);
+        ClusterDistributionChannelWriter writer = new ClusterDistributionChannelWriter(clusterDistributionChannelWriter,
+                clientOptions, clusterEventListener);
+
+        assertThat(writer.getIntent(Collections.emptyList())).isEqualTo(ConnectionIntent.WRITE);
     }
 
     @Test
     void shouldReturnIntentForReadCommand() {
 
+        ClusterDistributionChannelWriter writer = new ClusterDistributionChannelWriter(clusterDistributionChannelWriter,
+                clientOptions, clusterEventListener);
+
         RedisCommand<String, String, String> get = new Command<>(CommandType.GET, null);
         RedisCommand<String, String, String> mget = new Command<>(CommandType.MGET, null);
 
-        assertThat(ClusterDistributionChannelWriter.getIntent(Arrays.asList(get, mget))).isEqualTo(ConnectionIntent.READ);
+        assertThat(writer.getIntent(Arrays.asList(get, mget))).isEqualTo(ConnectionIntent.READ);
 
-        assertThat(ClusterDistributionChannelWriter.getIntent(Collections.singletonList(get))).isEqualTo(ConnectionIntent.READ);
+        assertThat(writer.getIntent(Collections.singletonList(get))).isEqualTo(ConnectionIntent.READ);
     }
 
     @Test
     void shouldReturnIntentForMixedCommands() {
 
+        ClusterDistributionChannelWriter writer = new ClusterDistributionChannelWriter(clusterDistributionChannelWriter,
+                clientOptions, clusterEventListener);
+
         RedisCommand<String, String, String> set = new Command<>(CommandType.SET, null);
         RedisCommand<String, String, String> mget = new Command<>(CommandType.MGET, null);
 
-        assertThat(ClusterDistributionChannelWriter.getIntent(Arrays.asList(set, mget))).isEqualTo(ConnectionIntent.WRITE);
+        assertThat(writer.getIntent(Arrays.asList(set, mget))).isEqualTo(ConnectionIntent.WRITE);
 
-        assertThat(ClusterDistributionChannelWriter.getIntent(Collections.singletonList(set))).isEqualTo(ConnectionIntent.WRITE);
+        assertThat(writer.getIntent(Collections.singletonList(set))).isEqualTo(ConnectionIntent.WRITE);
     }
 
     @Test
@@ -178,11 +231,11 @@ class ClusterDistributionChannelWriterUnitTests {
     @Test
     void shouldDisconnectWrappedEndpoint() {
 
-        CommandListenerWriter listenerWriter = new CommandListenerWriter(defaultWriter, Collections.emptyList());
-        CommandExpiryWriter expiryWriter = new CommandExpiryWriter(listenerWriter,
+        RedisChannelWriter expiryWriter = CommandExpiryWriter.buildCommandExpiryWriter(defaultWriter,
                 ClientOptions.builder().timeoutOptions(TimeoutOptions.enabled()).build(), clientResources);
+        RedisChannelWriter listenerWriter = new CommandListenerWriter(expiryWriter, Collections.emptyList());
 
-        ClusterDistributionChannelWriter writer = new ClusterDistributionChannelWriter(expiryWriter, ClientOptions.create(),
+        ClusterDistributionChannelWriter writer = new ClusterDistributionChannelWriter(listenerWriter, ClientOptions.create(),
                 clusterEventListener);
 
         writer.disconnectDefaultEndpoint();
@@ -224,4 +277,5 @@ class ClusterDistributionChannelWriterUnitTests {
             verify(clusterNodeEndpoint, never()).write(ArgumentMatchers.<RedisCommand<String, String, String>> any());
         }
     }
+
 }

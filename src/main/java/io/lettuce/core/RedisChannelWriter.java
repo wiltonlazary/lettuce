@@ -1,18 +1,3 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core;
 
 import java.io.Closeable;
@@ -66,17 +51,6 @@ public interface RedisChannelWriter extends Closeable, AsyncCloseable {
     CompletableFuture<Void> closeAsync();
 
     /**
-     * Reset the command state. Queued commands will be canceled and the internal state will be reset. This is useful when the
-     * internal state machine gets out of sync with the connection (e.g. errors during external SSL tunneling). Calling this
-     * method will reset the protocol state, therefore it is considered unsafe.
-     *
-     * @deprecated since 5.2. This method is unsafe and can cause protocol offsets (i.e. Redis commands are completed with
-     *             previous command values).
-     */
-    @Deprecated
-    void reset();
-
-    /**
      * Set the corresponding connection facade in order to notify it about channel active/inactive state.
      *
      * @param connection the connection facade (external connection object)
@@ -84,8 +58,8 @@ public interface RedisChannelWriter extends Closeable, AsyncCloseable {
     void setConnectionFacade(ConnectionFacade connection);
 
     /**
-     * Disable or enable auto-flush behavior. Default is {@code true}. If autoFlushCommands is disabled, multiple commands
-     * can be issued without writing them actually to the transport. Commands are buffered until a {@link #flushCommands()} is
+     * Disable or enable auto-flush behavior. Default is {@code true}. If autoFlushCommands is disabled, multiple commands can
+     * be issued without writing them actually to the transport. Commands are buffered until a {@link #flushCommands()} is
      * issued. After calling {@link #flushCommands()} commands are sent to the transport and executed by Redis.
      *
      * @param autoFlush state of autoFlush.

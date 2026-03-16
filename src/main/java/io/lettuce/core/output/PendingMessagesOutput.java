@@ -1,18 +1,3 @@
-/*
- * Copyright 2020-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.output;
 
 import java.nio.ByteBuffer;
@@ -42,6 +27,8 @@ public class PendingMessagesOutput<K, V> extends CommandOutput<K, V, PendingMess
 
     private String consumer;
 
+    private boolean hasConsumer;
+
     private final Map<String, Long> consumerMessageCount = new LinkedHashMap<>();
 
     public PendingMessagesOutput(RedisCodec<K, V> codec) {
@@ -52,21 +39,22 @@ public class PendingMessagesOutput<K, V> extends CommandOutput<K, V, PendingMess
     public void set(ByteBuffer bytes) {
 
         if (messageIdsFrom == null) {
-            messageIdsFrom = decodeAscii(bytes);
+            messageIdsFrom = decodeString(bytes);
             return;
         }
 
         if (messageIdsTo == null) {
-            messageIdsTo = decodeAscii(bytes);
+            messageIdsTo = decodeString(bytes);
             return;
         }
 
-        if (consumer == null) {
+        if (!hasConsumer) {
             consumer = StringCodec.UTF8.decodeKey(bytes);
+            hasConsumer = true;
             return;
         }
 
-        set(Long.parseLong(decodeAscii(bytes)));
+        set(Long.parseLong(decodeString(bytes)));
     }
 
     @Override
@@ -77,9 +65,10 @@ public class PendingMessagesOutput<K, V> extends CommandOutput<K, V, PendingMess
             return;
         }
 
-        if (consumer != null) {
+        if (hasConsumer) {
             consumerMessageCount.put(consumer, integer);
             consumer = null;
+            hasConsumer = false;
         }
     }
 

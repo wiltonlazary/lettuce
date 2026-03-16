@@ -1,7 +1,11 @@
 /*
- * Copyright 2018-2022 the original author or authors.
+ * Copyright 2018-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core.tracing;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.*;
 
 import java.util.ArrayList;
@@ -23,13 +28,14 @@ import java.util.Queue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import io.lettuce.core.ClientOptions;
+import io.lettuce.core.MaintNotificationsConfig;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import reactor.test.StepVerifier;
-import zipkin2.Span;
 import brave.ScopedSpan;
 import brave.Tracer;
 import brave.Tracing;
@@ -44,6 +50,8 @@ import io.lettuce.core.resource.DefaultClientResources;
 import io.lettuce.test.Wait;
 import io.lettuce.test.condition.EnabledOnCommand;
 import io.lettuce.test.resource.FastShutdown;
+import reactor.test.StepVerifier;
+import zipkin2.Span;
 
 /**
  * Integration tests for {@link BraveTracing}.
@@ -52,12 +60,18 @@ import io.lettuce.test.resource.FastShutdown;
  * @author Daniel Albuquerque
  * @author Anuraag Agrawal
  */
+@Tag(INTEGRATION_TEST)
 @EnabledOnCommand("HELLO")
 class BraveTracingIntegrationTests extends TestSupport {
 
     private static ClientResources clientResources;
+
+    private static ClientOptions clientOptions;
+
     private static RedisClient client;
+
     private static Tracing clientTracing;
+
     private static Queue<Span> spans = new LinkedBlockingQueue<>();
 
     @BeforeAll
@@ -67,7 +81,10 @@ class BraveTracingIntegrationTests extends TestSupport {
                 .currentTraceContext(CurrentTraceContext.Default.create()).spanReporter(spans::add).build();
 
         clientResources = DefaultClientResources.builder().tracing(BraveTracing.create(clientTracing)).build();
-        client = RedisClient.create(clientResources, RedisURI.Builder.redis(host, port).build());
+        clientOptions = ClientOptions.builder().maintNotificationsConfig(MaintNotificationsConfig.disabled()).build();
+        client = RedisClient.create(clientResources,
+                RedisURI.Builder.redis(host, port).withLibraryVersion("").withLibraryName("").build());
+        client.setOptions(clientOptions);
     }
 
     @BeforeEach
@@ -137,7 +154,9 @@ class BraveTracingIntegrationTests extends TestSupport {
 
         ClientResources clientResources = ClientResources.builder()
                 .tracing(BraveTracing.builder().tracing(clientTracing).excludeCommandArgsFromSpanTags().build()).build();
-        RedisClient client = RedisClient.create(clientResources, RedisURI.Builder.redis(host, port).build());
+        RedisClient client = RedisClient.create(clientResources,
+                RedisURI.Builder.redis(host, port).withLibraryName("").withLibraryVersion("").build());
+        client.setOptions(ClientOptions.builder().maintNotificationsConfig(MaintNotificationsConfig.disabled()).build());
 
         ScopedSpan trace = clientTracing.tracer().startScopedSpan("foo");
 
@@ -224,7 +243,8 @@ class BraveTracingIntegrationTests extends TestSupport {
 
         StatefulRedisConnection<String, String> connect = client.connect();
         connect.reactive().set("foo", "bar").then(connect.reactive().get("foo"))
-                .contextWrite(io.lettuce.core.tracing.Tracing.withTraceContextProvider(() -> BraveTracing.BraveTraceContext.create(trace.context()))) //
+                .contextWrite(io.lettuce.core.tracing.Tracing
+                        .withTraceContextProvider(() -> BraveTracing.BraveTraceContext.create(trace.context()))) //
                 .as(StepVerifier::create) //
                 .expectNext("bar").verifyComplete();
 
@@ -237,4 +257,5 @@ class BraveTracingIntegrationTests extends TestSupport {
         assertThat(spans.get(1).name()).isEqualTo("set");
         assertThat(spans.get(2).name()).isEqualTo("get");
     }
+
 }

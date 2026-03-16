@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core.protocol;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
 import static org.assertj.core.api.Fail.fail;
 import static org.mockito.AdditionalMatchers.*;
@@ -41,6 +46,7 @@ import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -83,6 +89,7 @@ import io.netty.util.concurrent.ImmediateEventExecutor;
  * @author Gavin Cook
  * @author Shaphan
  */
+@Tag(UNIT_TEST)
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class CommandHandlerUnitTests {
@@ -474,7 +481,7 @@ class CommandHandlerUnitTests {
 
         sut.channelRead(context, Unpooled.wrappedBuffer("*1\r\n+OK\r\n".getBytes()));
 
-        verify(latencyCollector).recordCommandLatency(any(), any(), eq(CommandType.APPEND), gt(0L), gt(0L));
+        verify(latencyCollector).recordCommandLatency(any(), any(), any(LatencyMeteredCommand.class), gt(0L), gt(0L));
 
         sut.channelUnregistered(context);
     }
@@ -523,7 +530,7 @@ class CommandHandlerUnitTests {
 
         // set the command handler buffer capacity to 30, make it easy to test
         ByteBuf internalBuffer = context.alloc().buffer(30);
-        sut.setBuffer(internalBuffer);
+        sut.setReadBuffer(internalBuffer);
 
         // mock a multi reply, which will reach the buffer usage ratio
         ByteBuf msg = context.alloc().buffer(100);
@@ -552,7 +559,7 @@ class CommandHandlerUnitTests {
 
         // set the command handler buffer capacity to 30, make it easy to test
         ByteBuf internalBuffer = context.alloc().buffer(30);
-        sut.setBuffer(internalBuffer);
+        sut.setReadBuffer(internalBuffer);
 
         // mock a multi reply, which will reach the buffer usage ratio
         ByteBuf msg = context.alloc().buffer(100);
@@ -629,6 +636,18 @@ class CommandHandlerUnitTests {
         assertThat(stack.isEmpty()).isTrue();
         assertThat(hmgetCommand.get()).isNotNull();
         assertThat(hmgetCommand.get()).hasSize(3);
+    }
+
+    /**
+     * @see <a href="https://github.com/redis/lettuce/issues/3087">Issue 3087</a>
+     */
+    @Test
+    void shouldHandleNullBuffers() throws Exception {
+        sut.setReadBuffer(null);
+        sut.channelRead(context, Unpooled.wrappedBuffer(("*4\r\n" + "$3\r\nONE\r\n" + "$4\r\n>TW").getBytes()));
+        assertThat(stack).hasSize(0);
+
+        sut.channelUnregistered(context);
     }
 
 }

@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core.commands;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.*;
 
 import java.time.Duration;
@@ -28,11 +33,11 @@ import java.util.Set;
 
 import javax.inject.Inject;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.TestInstance;
+import org.junit.Ignore;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import io.lettuce.core.CompareCondition;
 import io.lettuce.core.CopyArgs;
 import io.lettuce.core.ExpireArgs;
 import io.lettuce.core.KeyScanArgs;
@@ -40,12 +45,14 @@ import io.lettuce.core.KeyScanCursor;
 import io.lettuce.core.RedisException;
 import io.lettuce.core.RestoreArgs;
 import io.lettuce.core.ScanCursor;
+import io.lettuce.core.SetArgs;
 import io.lettuce.core.StreamScanCursor;
 import io.lettuce.core.TestSupport;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.test.LettuceExtension;
 import io.lettuce.test.ListStreamingAdapter;
 import io.lettuce.test.condition.EnabledOnCommand;
+import io.lettuce.test.condition.RedisConditions;
 
 /**
  * Integration tests for {@link io.lettuce.core.api.sync.RedisKeyCommands}.
@@ -54,6 +61,7 @@ import io.lettuce.test.condition.EnabledOnCommand;
  * @author Mark Paluch
  * @author dengliming
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class KeyCommandIntegrationTests extends TestSupport {
@@ -403,6 +411,7 @@ public class KeyCommandIntegrationTests extends TestSupport {
     }
 
     @Test
+    @Disabled("https://github.com/redis/lettuce/issues/3181")
     void restoreIdleTime() {
 
         redis.set(key, value);
@@ -604,6 +613,94 @@ public class KeyCommandIntegrationTests extends TestSupport {
             redis.set(key + i, value + i);
             expect.add(key + i);
         }
+    }
+
+    @Test
+    @EnabledOnCommand("DELEX")
+    void set_ex_ifeq_then_delex() {
+        String k = "k:set-ex-ifeq";
+        // Initial set with EX
+        assertThat(redis.set(k, "v1", SetArgs.Builder.ex(100))).isEqualTo("OK");
+        assertThat(redis.ttl(k)).isGreaterThan(0);
+
+        // Conditional update with IFEQ + EX
+        assertThat(redis.set(k, "v2", SetArgs.Builder.ex(200).compareCondition(CompareCondition.valueEq("v1"))))
+                .isEqualTo("OK");
+        assertThat(redis.get(k)).isEqualTo("v2");
+        assertThat(redis.ttl(k)).isGreaterThan(100);
+
+        // Delete with DELEX using value condition
+        assertThat(redis.delex(k, CompareCondition.valueEq("wrong"))).isEqualTo(0);
+        assertThat(redis.delex(k, CompareCondition.valueEq("v2"))).isEqualTo(1);
+        assertThat(redis.exists(k)).isEqualTo(0);
+    }
+
+    @Test
+    @EnabledOnCommand("DELEX")
+    void set_exAt_ifne_then_delex() {
+        String k = "k:set-exat-ifne";
+        long expiryTimestamp = Instant.now().plusSeconds(300).getEpochSecond();
+
+        // Initial set
+        redis.set(k, "v1");
+
+        // Conditional update with IFNE + EXAT
+        assertThat(redis.set(k, "v2", SetArgs.Builder.exAt(expiryTimestamp).compareCondition(CompareCondition.valueNe("v2"))))
+                .isEqualTo("OK");
+        assertThat(redis.get(k)).isEqualTo("v2");
+        assertThat(redis.ttl(k)).isGreaterThan(200);
+
+        // Delete with DELEX using value condition
+        assertThat(redis.delex(k, CompareCondition.valueNe("v2"))).isEqualTo(0);
+        assertThat(redis.delex(k, CompareCondition.valueNe("wrong"))).isEqualTo(1);
+        assertThat(redis.exists(k)).isEqualTo(0);
+    }
+
+    @Test
+    @EnabledOnCommand("DELEX")
+    void setGet_px_ifdne_then_delex() {
+        String k = "k:setget-px-ifdne";
+        String wrongKey = "wrong";
+        // Initial set
+        redis.set(k, "A");
+        redis.set(wrongKey, "wrong");
+        String digestBefore = redis.digestKey(k);
+        String digestWrong = redis.digestKey(wrongKey); // digest for non-existing value
+
+        // Conditional setGet with IFDNE + PX (digest not equal)
+        assertThat(redis.setGet(k, "B", SetArgs.Builder.px(100000).compareCondition(CompareCondition.digestNe(digestWrong))))
+                .isEqualTo("A");
+        assertThat(redis.get(k)).isEqualTo("B");
+        assertThat(redis.pttl(k)).isGreaterThan(90000);
+
+        // Delete with DELEX using digest condition
+        String digestAfter = redis.digestKey(k);
+        assertThat(redis.delex(k, CompareCondition.digestNe(digestAfter))).isEqualTo(0);
+        assertThat(redis.delex(k, CompareCondition.digestNe(digestBefore))).isEqualTo(1);
+        assertThat(redis.exists(k)).isEqualTo(0);
+    }
+
+    @Test
+    @EnabledOnCommand("DELEX")
+    void setGet_pxAt_ifdeq_then_delex() {
+        String k = "k:setget-pxat-ifdeq";
+        long expiryTimestampMs = Instant.now().plusSeconds(300).toEpochMilli();
+
+        // Initial set
+        redis.set(k, "X");
+        String digestX = redis.digestKey(k);
+
+        // Conditional setGet with IFDEQ + PXAT (digest equal)
+        assertThat(redis.setGet(k, "Y",
+                SetArgs.Builder.pxAt(expiryTimestampMs).compareCondition(CompareCondition.digestEq(digestX)))).isEqualTo("X");
+        assertThat(redis.get(k)).isEqualTo("Y");
+        assertThat(redis.pttl(k)).isGreaterThan(200000);
+
+        // Delete with DELEX using digest condition
+        String digestY = redis.digestKey(k);
+        assertThat(redis.delex(k, CompareCondition.digestEq(digestX))).isEqualTo(0);
+        assertThat(redis.delex(k, CompareCondition.digestEq(digestY))).isEqualTo(1);
+        assertThat(redis.exists(k)).isEqualTo(0);
     }
 
 }

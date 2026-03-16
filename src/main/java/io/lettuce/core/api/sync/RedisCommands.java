@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -17,6 +21,7 @@ package io.lettuce.core.api.sync;
 
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.cluster.api.sync.RedisClusterCommands;
+import io.lettuce.core.json.JsonParser;
 
 /**
  *
@@ -25,12 +30,14 @@ import io.lettuce.core.cluster.api.sync.RedisClusterCommands;
  * @param <K> Key type.
  * @param <V> Value type.
  * @author Mark Paluch
+ * @author Tihomir Mateev
  * @since 3.0
  */
-public interface RedisCommands<K, V> extends BaseRedisCommands<K, V>, RedisAclCommands<K, V>, RedisClusterCommands<K, V>, RedisGeoCommands<K, V>,
-        RedisHashCommands<K, V>, RedisHLLCommands<K, V>, RedisKeyCommands<K, V>, RedisListCommands<K, V>,
-        RedisScriptingCommands<K, V>, RedisServerCommands<K, V>, RedisSetCommands<K, V>, RedisSortedSetCommands<K, V>,
-        RedisStreamCommands<K, V>, RedisStringCommands<K, V>, RedisTransactionalCommands<K, V> {
+public interface RedisCommands<K, V> extends BaseRedisCommands<K, V>, RedisAclCommands<K, V>, RedisClusterCommands<K, V>,
+        RedisFunctionCommands<K, V>, RedisGeoCommands<K, V>, RedisHashCommands<K, V>, RedisHLLCommands<K, V>,
+        RedisKeyCommands<K, V>, RedisListCommands<K, V>, RedisScriptingCommands<K, V>, RedisServerCommands<K, V>,
+        RedisSetCommands<K, V>, RedisSortedSetCommands<K, V>, RedisStreamCommands<K, V>, RedisStringCommands<K, V>,
+        RedisTransactionalCommands<K, V>, RedisJsonCommands<K, V>, RedisVectorSetCommands<K, V>, RediSearchCommands<K, V> {
 
     /**
      * Authenticate to the server.
@@ -74,5 +81,11 @@ public interface RedisCommands<K, V> extends BaseRedisCommands<K, V>, RedisAclCo
      */
     @Deprecated
     StatefulRedisConnection<K, V> getStatefulConnection();
+
+    /**
+     * @return the currently configured instance of the {@link JsonParser}
+     * @since 6.5
+     */
+    JsonParser getJsonParser();
 
 }

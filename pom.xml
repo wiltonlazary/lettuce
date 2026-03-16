@@ -3,17 +3,17 @@
 
     <groupId>io.lettuce</groupId>
     <artifactId>lettuce-core</artifactId>
-    <version>6.3.0.BUILD-SNAPSHOT</version>
+    <version>7.6.0-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <name>Lettuce</name>
 
-    <description>Advanced and thread-safe Java Redis client for synchronous, asynchronous, and
-        reactive usage. Supports Cluster, Sentinel, Pipelining, Auto-Reconnect, Codecs
+    <description>Advanced and thread-safe Java Redis client for synchronous, asynchronous,
+        and reactive usage. Supports Cluster, Sentinel, Pipelining, Auto-Reconnect, Codecs
         and much more.
     </description>
 
-    <url>http://github.com/lettuce-io/lettuce-core</url>
+    <url>https://github.com/redis/lettuce</url>
 
     <organization>
         <name>lettuce.io</name>
@@ -22,18 +22,22 @@
 
     <licenses>
         <license>
-            <name>Apache License, Version 2.0</name>
-            <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+            <name>MIT</name>
+            <url>https://github.com/redis/lettuce/blob/main/LICENSE</url>
             <distribution>repo</distribution>
         </license>
     </licenses>
 
     <issueManagement>
         <system>Github</system>
-        <url>https://github.com/lettuce-io/lettuce-core/issues</url>
+        <url>https://github.com/redis/lettuce/issues</url>
     </issueManagement>
 
     <developers>
+        <developer>
+            <id>tishun</id>
+            <name>Tihomir Mateev</name>
+        </developer>
         <developer>
             <id>mp911de</id>
             <name>Mark Paluch</name>
@@ -45,31 +49,34 @@
     </developers>
 
     <properties>
-        <assertj-core.version>3.23.1</assertj-core.version>
+        <awaitility.version>4.3.0</awaitility.version>
+        <assertj-core.version>3.27.7</assertj-core.version>
         <cdi-api.version>2.0.SP1</cdi-api.version>
-        <brave.version>5.13.7</brave.version>
-        <commons-lang3.version>3.12.0</commons-lang3.version>
-        <commons-pool.version>2.11.1</commons-pool.version>
+        <brave.version>5.13.11</brave.version>
+        <commons-lang3.version>3.18.0</commons-lang3.version>
+        <commons-pool.version>2.12.0</commons-pool.version>
+        <jackson-version>2.17.0</jackson-version>
         <javax.annotation-api.version>1.3.2</javax.annotation-api.version>
         <javax.servlet-api.version>4.0.1</javax.servlet-api.version>
-        <junit5.version>5.9.1</junit5.version>
+        <junit5.version>5.10.2</junit5.version>
         <hamcrest-library.version>2.2</hamcrest-library.version>
-        <hdr-histogram-version>2.1.12</hdr-histogram-version>
-        <kotlin.version>1.5.30</kotlin.version>
+        <hdr-histogram.version>2.2.2</hdr-histogram.version>
+        <kotlin.version>2.0.0</kotlin.version>
         <kotlinx-coroutines.version>1.5.2</kotlinx-coroutines.version>
         <latencyutils.version>2.0.3</latencyutils.version>
-        <log4j2-version>2.17.2</log4j2-version>
-        <micrometer.version>1.9.4</micrometer.version>
-        <mockito.version>4.8.0</mockito.version>
-        <netty.version>4.1.82.Final</netty.version>
+        <log4j2-version>2.24.0</log4j2-version>
+        <micrometer.version>1.14.2</micrometer.version>
+        <micrometer-tracing.version>1.2.4</micrometer-tracing.version>
+        <mockito.version>4.9.0</mockito.version>
+        <netty.version>4.2.5.Final</netty.version>
         <openwebbeans.version>2.0.27</openwebbeans.version>
-        <reactor.version>3.4.23</reactor.version>
+        <reactor.version>3.6.6</reactor.version>
         <rxjava.version>1.3.8</rxjava.version>
         <rxjava-reactive-streams.version>1.2.1</rxjava-reactive-streams.version>
         <rxjava2.version>2.2.21</rxjava2.version>
-        <rxjava3.version>3.1.5</rxjava3.version>
+        <rxjava3.version>3.1.8</rxjava3.version>
         <reactive-streams-tck.version>1.0.4</reactive-streams-tck.version>
-        <slf4j.version>1.7.25</slf4j.version>
+        <slf4j.version>2.0.16</slf4j.version>
 
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- You need a running redis+sentinel for all tests, therefore disabled by default -->
@@ -79,27 +86,32 @@
     </properties>
 
     <scm>
-        <connection>scm:git:https://github.com/lettuce-io/lettuce-core.git</connection>
-        <developerConnection>scm:git:https://github.com/lettuce-io/lettuce-core.git</developerConnection>
-        <url>http://github.com/lettuce-io/lettuce-core</url>
-    </scm>
+        <connection>scm:git:https://github.com/redis/lettuce.git</connection>
+        <developerConnection>scm:git:https://github.com/redis/lettuce.git
+        </developerConnection>
+        <url>https://github.com/redis/lettuce</url>
+      <tag>HEAD</tag>
+  </scm>
 
     <distributionManagement>
-        <snapshotRepository>
-            <id>sonatype-nexus-snapshots</id>
-            <name>Sonatype Nexus Snapshots</name>
-            <url>https://oss.sonatype.org/content/repositories/snapshots/</url>
-        </snapshotRepository>
         <repository>
-            <id>sonatype-nexus-staging</id>
-            <name>Nexus Release Repository</name>
-            <url>https://oss.sonatype.org/service/local/staging/deploy/maven2/</url>
+            <id>central</id>
+            <url>https://central.sonatype.com/api/v1/publisher/deployments/upload/</url>
         </repository>
+        <snapshotRepository>
+            <id>central</id>
+            <url>https://central.sonatype.com/repository/maven-snapshots/</url>
+        </snapshotRepository>
     </distributionManagement>
 
     <dependencyManagement>
         <dependencies>
-
+            <dependency>
+                <groupId>org.awaitility</groupId>
+                <artifactId>awaitility</artifactId>
+                <version>${awaitility.version}</version>
+                <scope>test</scope>
+            </dependency>
             <dependency>
                 <groupId>io.netty</groupId>
                 <artifactId>netty-bom</artifactId>
@@ -112,6 +124,22 @@
                 <groupId>io.zipkin.brave</groupId>
                 <artifactId>brave-bom</artifactId>
                 <version>${brave.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-bom</artifactId>
+                <version>${micrometer.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+
+            <dependency>
+                <groupId>io.micrometer</groupId>
+                <artifactId>micrometer-tracing-bom</artifactId>
+                <version>${micrometer-tracing.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
@@ -152,7 +180,17 @@
     </dependencyManagement>
 
     <dependencies>
-
+        <dependency>
+            <groupId>redis.clients.authentication</groupId>
+            <artifactId>redis-authx-core</artifactId>
+            <version>0.1.1-beta2</version>
+        </dependency>
+        <dependency>
+            <groupId>redis.clients.authentication</groupId>
+            <artifactId>redis-authx-entraid</artifactId>
+            <version>0.1.1-beta2</version>
+            <scope>test</scope>
+        </dependency>
         <!-- Start of core dependencies -->
 
         <dependency>
@@ -208,7 +246,7 @@
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-tcnative</artifactId>
-            <version>2.0.54.Final</version>
+            <version>2.0.65.Final</version>
             <classifier>${os.detected.classifier}</classifier>
             <optional>true</optional>
         </dependency>
@@ -216,6 +254,18 @@
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-resolver-dns</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-codec-http</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>${jackson-version}</version>
             <optional>true</optional>
         </dependency>
 
@@ -223,23 +273,19 @@
 
         <dependency>
             <groupId>io.netty</groupId>
-            <artifactId>netty-transport-native-epoll</artifactId>
-            <classifier>linux-x86_64</classifier>
+            <artifactId>netty-transport-classes-epoll</artifactId>
             <optional>true</optional>
         </dependency>
 
         <dependency>
             <groupId>io.netty</groupId>
-            <artifactId>netty-transport-native-kqueue</artifactId>
-            <classifier>osx-x86_64</classifier>
+            <artifactId>netty-transport-classes-kqueue</artifactId>
             <optional>true</optional>
         </dependency>
 
         <dependency>
-            <groupId>io.netty.incubator</groupId>
-            <artifactId>netty-incubator-transport-native-io_uring</artifactId>
-            <version>0.0.15.Final</version>
-            <classifier>linux-x86_64</classifier>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-transport-classes-io_uring</artifactId>
             <optional>true</optional>
         </dependency>
 
@@ -261,14 +307,55 @@
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
-            <version>${micrometer.version}</version>
             <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-observation</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-test</artifactId>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.github.tomakehurst</groupId>
+                    <artifactId>wiremock-jre8-standalone</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing-integration-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.awaitility</groupId>
+            <artifactId>awaitility</artifactId>
+            <scope>test</scope>
         </dependency>
 
         <dependency>
             <groupId>org.hdrhistogram</groupId>
             <artifactId>HdrHistogram</artifactId>
-            <version>${hdr-histogram-version}</version>
+            <version>${hdr-histogram.version}</version>
             <optional>true</optional>
         </dependency>
 
@@ -469,6 +556,52 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- TEST CONTAINERS -->
+
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <version>1.20.4</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>1.20.1</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Toxiproxy for network failure simulation -->
+        <dependency>
+            <groupId>eu.rekawek.toxiproxy</groupId>
+            <artifactId>toxiproxy-java</artifactId>
+            <version>2.1.11</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- JMH -->
+
+        <dependency>
+            <groupId>org.openjdk.jmh</groupId>
+            <artifactId>jmh-core</artifactId>
+            <version>1.21</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.openjdk.jmh</groupId>
+            <artifactId>jmh-generator-annprocess</artifactId>
+            <version>1.21</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Dependencies for FaultInjectionClient -->
+        <dependency>
+            <groupId>io.projectreactor.netty</groupId>
+            <artifactId>reactor-netty-http</artifactId>
+            <version>1.2.8</version>
+            <scope>test</scope>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -484,7 +617,7 @@
             <extension>
                 <groupId>kr.motd.maven</groupId>
                 <artifactId>os-maven-plugin</artifactId>
-                <version>1.7.0</version>
+                <version>1.7.1</version>
             </extension>
         </extensions>
 
@@ -493,13 +626,19 @@
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
                     <artifactId>flatten-maven-plugin</artifactId>
-                    <version>1.3.0</version>
+                    <version>1.6.0</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>pl.project13.maven</groupId>
+                    <artifactId>git-commit-id-plugin</artifactId>
+                    <version>4.9.10</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-assembly-plugin</artifactId>
-                    <version>3.4.2</version>
+                    <version>3.7.1</version>
                 </plugin>
 
                 <plugin>
@@ -517,42 +656,42 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.10.1</version>
+                    <version>3.13.0</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-jar-plugin</artifactId>
-                    <version>3.3.0</version>
-                </plugin>
-
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-gpg-plugin</artifactId>
-                    <version>3.0.1</version>
-                </plugin>
-
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-javadoc-plugin</artifactId>
                     <version>3.4.1</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-gpg-plugin</artifactId>
+                    <version>3.2.8</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>3.8.0</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-release-plugin</artifactId>
-                    <version>2.5.3</version>
+                    <version>3.0.1</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>3.0.0-M7</version>
+                    <version>3.4.0</version>
                     <dependencies>
                         <dependency>
                             <groupId>org.apache.maven.surefire</groupId>
                             <artifactId>surefire-junit-platform</artifactId>
-                            <version>3.0.0-M7</version>
+                            <version>3.4.0</version>
                         </dependency>
                     </dependencies>
                 </plugin>
@@ -560,12 +699,12 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-failsafe-plugin</artifactId>
-                    <version>3.0.0-M7</version>
+                    <version>3.3.1</version>
                     <dependencies>
                         <dependency>
                             <groupId>org.apache.maven.surefire</groupId>
                             <artifactId>surefire-junit-platform</artifactId>
-                            <version>3.0.0-M7</version>
+                            <version>3.3.1</version>
                         </dependency>
                     </dependencies>
                 </plugin>
@@ -573,25 +712,25 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-source-plugin</artifactId>
-                    <version>3.2.1</version>
-                </plugin>
-
-                <plugin>
-                    <groupId>org.codehaus.mojo</groupId>
-                    <artifactId>build-helper-maven-plugin</artifactId>
                     <version>3.3.0</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>build-helper-maven-plugin</artifactId>
+                    <version>3.5.0</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
                     <artifactId>exec-maven-plugin</artifactId>
-                    <version>3.1.0</version>
+                    <version>3.1.1</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.jacoco</groupId>
                     <artifactId>jacoco-maven-plugin</artifactId>
-                    <version>0.8.8</version>
+                    <version>0.8.12</version>
                 </plugin>
 
                 <plugin>
@@ -603,6 +742,19 @@
         </pluginManagement>
 
         <plugins>
+            <plugin>
+                <groupId>pl.project13.maven</groupId>
+                <artifactId>git-commit-id-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>get-the-git-infos</id>
+                        <goals>
+                            <goal>revision</goal>
+                        </goals>
+                        <phase>initialize</phase>
+                    </execution>
+                </executions>
+            </plugin>
 
             <plugin>
                 <groupId>org.codehaus.mojo</groupId>
@@ -659,11 +811,12 @@
                 <artifactId>kotlin-maven-plugin</artifactId>
                 <configuration>
                     <jvmTarget>1.8</jvmTarget>
-                    <languageVersion>1.3</languageVersion>
-                    <apiVersion>1.3</apiVersion>
+                    <languageVersion>1.4</languageVersion>
+                    <apiVersion>1.4</apiVersion>
                     <args>
                         <arg>-Xopt-in=kotlin.RequiresOptIn</arg>
-                        <arg>-Xopt-in=io.lettuce.core.ExperimentalLettuceCoroutinesApi</arg>
+                        <arg>-Xopt-in=io.lettuce.core.ExperimentalLettuceCoroutinesApi
+                        </arg>
                     </args>
                 </configuration>
                 <executions>
@@ -734,10 +887,15 @@
                 <configuration>
                     <archive>
                         <manifest>
-                            <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
-                            <addDefaultSpecificationEntries>true</addDefaultSpecificationEntries>
+                            <addDefaultImplementationEntries>true
+                            </addDefaultImplementationEntries>
+                            <addDefaultSpecificationEntries>true
+                            </addDefaultSpecificationEntries>
                         </manifest>
                         <manifestEntries>
+                            <Implementation-Version>
+                                ${project.version}/${git.commit.id.abbrev}
+                            </Implementation-Version>
                             <Automatic-Module-Name>lettuce.core</Automatic-Module-Name>
                         </manifestEntries>
                     </archive>
@@ -748,9 +906,9 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
-                    <systemProperties>
+                    <systemPropertyVariables>
                         <io.netty.eventLoopThreads>4</io.netty.eventLoopThreads>
-                    </systemProperties>
+                    </systemPropertyVariables>
                     <includes>
                         <include>**/*UnitTests</include>
                         <include>**/*Tests</include>
@@ -759,16 +917,39 @@
                         <exclude>**/*Test</exclude>
                         <exclude>**/*IntegrationTests</exclude>
                     </excludes>
+                    <excludedGroups>integration</excludedGroups>
                 </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>net.revelc.code.formatter</groupId>
+                <artifactId>formatter-maven-plugin</artifactId>
+                <version>2.16.0</version>
+                <configuration>
+                    <directories>
+                        <directory>${project.build.sourceDirectory}</directory>
+                        <directory>${project.build.testSourceDirectory}</directory>
+                        <directory>${project.basedir}/src/main/templates</directory>
+                    </directories>
+                    <configFile>formatting.xml</configFile>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>validate</goal>
+                        </goals>
+                    </execution>
+                </executions>
             </plugin>
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-failsafe-plugin</artifactId>
                 <configuration>
-                    <systemProperties>
+                    <systemPropertyVariables>
+                        <REDIS_STACK_VERSION>${env.REDIS_STACK_VERSION}</REDIS_STACK_VERSION>
                         <io.netty.eventLoopThreads>4</io.netty.eventLoopThreads>
-                    </systemProperties>
+                    </systemPropertyVariables>
                     <includes>
                         <include>**/*IntegrationTests</include>
                         <include>**/*Test</include>
@@ -783,6 +964,7 @@
                         <phase>integration-test</phase>
                         <goals>
                             <goal>integration-test</goal>
+                            <goal>verify</goal>
                         </goals>
                     </execution>
                 </executions>
@@ -792,10 +974,22 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-release-plugin</artifactId>
                 <configuration>
-                    <releaseProfiles>sonatype-oss-release,documentation</releaseProfiles>
+                    <releaseProfiles>sonatype-oss-release</releaseProfiles>
                     <goals>deploy</goals>
                     <autoVersionSubmodules>true</autoVersionSubmodules>
                     <tagNameFormat>@{project.version}</tagNameFormat>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.sonatype.central</groupId>
+                <artifactId>central-publishing-maven-plugin</artifactId>
+                <version>0.8.0</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <publishingServerId>central</publishingServerId>
+                    <autoPublish>true</autoPublish>
+                    <waitUntil>published</waitUntil>
                 </configuration>
             </plugin>
 
@@ -844,7 +1038,7 @@
                 </os>
             </activation>
             <properties>
-                <os.detected.classifier>linux-aarch64-fedora</os.detected.classifier>
+                <os.detected.classifier>linux-aarch_64-fedora</os.detected.classifier>
             </properties>
         </profile>
 
@@ -862,7 +1056,66 @@
         </profile>
 
         <profile>
+            <id>linux-native-transports</id>
+            <activation>
+                <os>
+                    <name>linux</name>
+                </os>
+            </activation>
+            <dependencies>
+                <!-- Native transport implementations for testing on Linux -->
+                <dependency>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-transport-native-epoll</artifactId>
+                    <version>${netty.version}</version>
+                    <classifier>${os.detected.classifier}</classifier>
+                    <scope>test</scope>
+                </dependency>
+                <dependency>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-transport-native-io_uring</artifactId>
+                    <version>${netty.version}</version>
+                    <classifier>${os.detected.classifier}</classifier>
+                    <scope>test</scope>
+                </dependency>
+            </dependencies>
+        </profile>
+
+        <profile>
             <id>ci</id>
+        </profile>
+
+        <profile>
+            <id>entraid-it</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                           <skipTests>true</skipTests>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <groups>entraid</groups>
+                            <skipITs>false</skipITs>
+                            <includes>
+                                <include>**/*IntegrationTests</include>
+                            </includes>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <phase>integration-test</phase>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
 
         <profile>
@@ -887,14 +1140,20 @@
                             <level>public</level>
                             <author>true</author>
                             <header>Lettuce</header>
-                            <stylesheetfile>src/main/javadoc/stylesheet.css</stylesheetfile>
+                            <stylesheetfile>src/main/javadoc/stylesheet.css
+                            </stylesheetfile>
                             <links>
                                 <link>https://netty.io/4.1/api/</link>
-                                <link>https://commons.apache.org/proper/commons-pool/apidocs/</link>
-                                <link>http://reactivex.io/RxJava/1.x/javadoc/</link>
-                                <link>http://reactivex.io/RxJava/javadoc/</link>
-                                <link>https://projectreactor.io/docs/core/release/api/</link>
-                                <link>https://docs.spring.io/spring/docs/current/javadoc-api/</link>
+                                <link>
+                                    https://commons.apache.org/proper/commons-pool/apidocs/
+                                </link>
+                                <link>https://reactivex.io/RxJava/1.x/javadoc/</link>
+                                <link>https://reactivex.io/RxJava/javadoc/</link>
+                                <link>https://projectreactor.io/docs/core/release/api/
+                                </link>
+                                <link>
+                                    https://docs.spring.io/spring/docs/current/javadoc-api/
+                                </link>
                             </links>
                             <doclint>none</doclint>
                             <quiet>true</quiet>
@@ -905,12 +1164,19 @@
                                     <head>Generated class:</head>
                                 </tag>
                             </tags>
+                            <javadocVersion>1.8</javadocVersion>
                         </configuration>
                     </plugin>
 
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-gpg-plugin</artifactId>
+                        <configuration>
+                            <gpgArguments>
+                                <arg>--pinentry-mode</arg>
+                                <arg>loopback</arg>
+                            </gpgArguments>
+                        </configuration>
                         <executions>
                             <execution>
                                 <id>sign-artifacts</id>
@@ -971,7 +1237,8 @@
                                 <configuration>
                                     <fileSets>
                                         <fileSet>
-                                            <directory>${project.build.directory}</directory>
+                                            <directory>${project.build.directory}
+                                            </directory>
                                             <includes>
                                                 <include>*.gz</include>
                                                 <include>*.zip</include>
@@ -988,7 +1255,7 @@
 
         <profile>
 
-            <id>jmh</id>
+            <id>jmh</id> <!-- mvn -Pjmh clean test -->
 
             <dependencies>
                 <dependency>
@@ -1007,6 +1274,22 @@
 
             <build>
                 <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <version>3.13.0</version>
+                        <configuration>
+                            <source>8</source>
+                            <target>8 </target>
+                            <annotationProcessorPaths>
+                                <path>
+                                    <groupId>org.openjdk.jmh</groupId>
+                                    <artifactId>jmh-generator-annprocess</artifactId>
+                                    <version>1.21</version>
+                                </path>
+                            </annotationProcessorPaths>
+                        </configuration>
+                    </plugin>
                     <plugin>
                         <artifactId>maven-surefire-plugin</artifactId>
                         <configuration>
@@ -1057,19 +1340,66 @@
                                         <argument>org.openjdk.jmh.Main</argument>
                                         <argument>.*</argument>
                                         <argument>-tu</argument>
+                                        <!--
+                              Override time unit in benchmark results. Available
+                              time units are: [m, s, ms, us, ns].
+                                        -->
                                         <argument>ns</argument>
                                         <argument>-f</argument>
+                                        <!--
+                              How many times to fork a single benchmark. Use 0 to
+                              disable forking altogether. Warning: disabling
+                              forking may have detrimental impact on benchmark
+                              and infrastructure reliability, you might want
+                              to use different warmup mode instead.
+                                        -->
                                         <argument>1</argument>
                                         <argument>-wi</argument>
+                                        <!--
+                              Number of warmup iterations to do. Warmup iterations
+                              are not counted towards the benchmark score.
+                                        -->
                                         <argument>10</argument>
                                         <argument>-w</argument>
+                                        <!--
+                              Minimum time to spend at each warmup iteration. Benchmarks
+                              may generally run longer than iteration duration.
+                                        -->
                                         <argument>1</argument>
                                         <argument>-r</argument>
+                                        <!--
+                              Minimum time to spend at each measurement iteration.
+                              Benchmarks may generally run longer than iteration
+                              duration.
+                                        -->
                                         <argument>1</argument>
                                         <argument>-i</argument>
+                                        <!--
+                              Number of measurement iterations to do. Measurement
+                              iterations are counted towards the benchmark score.
+                                        -->
                                         <argument>10</argument>
                                         <argument>-bm</argument>
+                                        <!--
+                              Benchmark mode. Available modes are: [Throughput/thrpt,
+                              AverageTime/avgt, SampleTime/sample, SingleShotTime/ss,
+                              All/all]
+                                        -->
                                         <argument>avgt</argument>
+                                        <argument>-rf</argument>
+                                        <!--
+                              Format type for machine-readable results. These
+                              results are written to a separate file (see -rff).
+                              See the list of available result formats with -lrf.
+                                        -->
+                                        <argument>json</argument>
+                                        <argument>-rff</argument>
+                                        <!--
+                              Write machine-readable results to a given file.
+                              The file format is controlled by -rf option. Please
+                              see the list of result formats for available formats.
+                                        -->
+                                        <argument>benchmarks.json</argument>
                                     </arguments>
                                 </configuration>
                             </execution>
@@ -1112,120 +1442,20 @@
         </profile>
 
         <profile>
-
-            <id>documentation</id>
-
+            <id>doctests</id>
             <build>
-
                 <plugins>
-
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-antrun-plugin</artifactId>
-                        <executions>
-
-                            <execution>
-                                <id>rename-reference-docs</id>
-                                <phase>process-resources</phase>
-                                <configuration>
-                                    <target>
-                                        <copy failonerror="false" file="${project.build.directory}/generated-docs/index.pdf" tofile="target/site/reference/pdf/lettuce-reference.pdf" />
-                                    </target>
-                                </configuration>
-                                <goals>
-                                    <goal>run</goal>
-                                </goals>
-                            </execution>
-
-                        </executions>
-                    </plugin>
-
-                    <plugin>
-                        <groupId>org.asciidoctor</groupId>
-                        <artifactId>asciidoctor-maven-plugin</artifactId>
-                        <version>2.0.0-RC.1</version>
-                        <dependencies>
-                            <dependency>
-                                <groupId>org.asciidoctor</groupId>
-                                <artifactId>asciidoctorj-pdf</artifactId>
-                                <version>1.5.0-beta.5</version>
-                            </dependency>
-                        </dependencies>
-                        <executions>
-
-                            <execution>
-                                <id>html</id>
-                                <phase>generate-resources</phase>
-                                <goals>
-                                    <goal>process-asciidoc</goal>
-                                </goals>
-                                <configuration>
-                                    <backend>html5</backend>
-                                    <outputDirectory>${project.build.directory}/site/reference/html
-                                    </outputDirectory>
-                                    <doctype>book</doctype>
-                                    <attributes>
-                                        <linkcss>true</linkcss>
-                                        <sectanchors>true</sectanchors>
-                                        <stylesdir>stylesheets</stylesdir>
-                                        <stylesheet>golo.css</stylesheet>
-                                    </attributes>
-                                </configuration>
-                            </execution>
-
-                            <execution>
-                                <id>pdf</id>
-                                <phase>generate-resources</phase>
-                                <goals>
-                                    <goal>process-asciidoc</goal>
-                                </goals>
-                                <configuration>
-                                    <backend>pdf</backend>
-                                </configuration>
-                            </execution>
-
-                        </executions>
-
+                        <artifactId>maven-surefire-plugin</artifactId>
                         <configuration>
-                            <sourceDirectory>src/main/asciidoc</sourceDirectory>
-                            <sourceDocumentName>index.asciidoc</sourceDocumentName>
-                            <doctype>book</doctype>
-                            <attributes>
-                                <version>${project.version}</version>
-                                <allow-uri-read>true</allow-uri-read>
-                                <toclevels>3</toclevels>
-                                <numbered>true</numbered>
-                                <ext-doc>https://raw.githubusercontent.com/wiki/lettuce-io/lettuce-core/</ext-doc>
-                                <allow-uri-read />
-                                <docinfo />
-                                <toc2 />
-                                <icons>font</icons>
-                                <source-highlighter>coderay</source-highlighter>
-                            </attributes>
+                            <includes>
+                                <include>**/examples/reactive/*Example.java</include>
+                                <include>**/examples/async/*Example.java</include>
+                            </includes>
+                            <failIfNoTests>true</failIfNoTests>
                         </configuration>
                     </plugin>
-
-                    <plugin>
-                        <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-assembly-plugin</artifactId>
-                        <executions>
-                            <execution>
-                                <id>docs</id>
-                                <phase>package</phase>
-                                <goals>
-                                    <goal>single</goal>
-                                </goals>
-                                <configuration>
-                                    <descriptors>
-                                        <descriptor>src/assembly/docs.xml</descriptor>
-                                    </descriptors>
-                                    <tarLongFileMode>gnu</tarLongFileMode>
-                                    <attach>true</attach>
-                                </configuration>
-                            </execution>
-                        </executions>
-                    </plugin>
-
                 </plugins>
             </build>
         </profile>

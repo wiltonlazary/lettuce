@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -23,6 +27,7 @@ import io.netty.buffer.ByteBuf;
  * A {@link RedisCodec} that uses plain byte arrays without further transformations.
  *
  * @author Mark Paluch
+ * @author shikharid
  * @since 3.3
  */
 public class ByteArrayCodec implements RedisCodec<byte[], byte[]>, ToByteBufEncoder<byte[], byte[]> {
@@ -55,6 +60,11 @@ public class ByteArrayCodec implements RedisCodec<byte[], byte[]>, ToByteBufEnco
     }
 
     @Override
+    public boolean isEstimateExact() {
+        return true;
+    }
+
+    @Override
     public byte[] decodeKey(ByteBuffer bytes) {
         return getBytes(bytes);
     }
@@ -80,9 +90,11 @@ public class ByteArrayCodec implements RedisCodec<byte[], byte[]>, ToByteBufEnco
     }
 
     private static byte[] getBytes(ByteBuffer buffer) {
+        if (buffer == null) {
+            return EMPTY;
+        }
 
         int remaining = buffer.remaining();
-
         if (remaining == 0) {
             return EMPTY;
         }

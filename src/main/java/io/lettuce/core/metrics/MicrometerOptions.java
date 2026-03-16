@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -16,8 +20,13 @@
 package io.lettuce.core.metrics;
 
 import java.time.Duration;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.function.Predicate;
 
 import io.lettuce.core.internal.LettuceAssert;
+import io.lettuce.core.protocol.CommandType;
+import io.lettuce.core.protocol.RedisCommand;
 import io.micrometer.core.instrument.Tags;
 
 /**
@@ -25,6 +34,7 @@ import io.micrometer.core.instrument.Tags;
  *
  * @author Steven Sheehy
  * @author Mark Paluch
+ * @author André Tibola
  * @since 6.1
  */
 public class MicrometerOptions {
@@ -55,6 +65,8 @@ public class MicrometerOptions {
 
     private final Duration minLatency;
 
+    private final Predicate<RedisCommand<?, ?, ?>> metricsFilter;
+
     private final Tags tags;
 
     private final double[] targetPercentiles;
@@ -65,6 +77,7 @@ public class MicrometerOptions {
         this.enabled = builder.enabled;
         this.histogram = builder.histogram;
         this.localDistinction = builder.localDistinction;
+        this.metricsFilter = builder.metricsFilter;
         this.maxLatency = builder.maxLatency;
         this.minLatency = builder.minLatency;
         this.tags = builder.tags;
@@ -119,6 +132,8 @@ public class MicrometerOptions {
         private boolean histogram = DEFAULT_HISTOGRAM;
 
         private boolean localDistinction = DEFAULT_LOCAL_DISTINCTION;
+
+        private Predicate<RedisCommand<?, ?, ?>> metricsFilter = command -> true;
 
         private Duration maxLatency = DEFAULT_MAX_LATENCY;
 
@@ -182,11 +197,48 @@ public class MicrometerOptions {
         }
 
         /**
+         * Sets which commands are enabled for latency recording. Defaults to an empty list, which means all commands will be
+         * recorded. Configuring enabled commands overwrites {@link #metricsFilter(Predicate)}.
+         *
+         * @param commands list of Redis commands that are enabled for latency recording, must not be {@code null}
+         * @return this {@link Builder}.
+         * @since 6.3
+         */
+        public Builder enabledCommands(CommandType... commands) {
+
+            LettuceAssert.notNull(commands, "Commands must not be null");
+
+            if (commands.length == 0) {
+                return metricsFilter(command -> true);
+            }
+
+            Set<String> enabledCommands = new HashSet<>(commands.length);
+            for (CommandType enabledCommand : commands) {
+                enabledCommands.add(enabledCommand.name());
+            }
+
+            return metricsFilter(command -> enabledCommands.contains(command.getType().toString()));
+        }
+
+        /**
+         * Configures a filter {@link Predicate} to filter which commands should be reported to Micrometer.
+         *
+         * @param filter the filter predicate to test commands.
+         * @return this {@link Builder}.
+         * @since 6.3
+         */
+        public Builder metricsFilter(Predicate<RedisCommand<?, ?, ?>> filter) {
+            LettuceAssert.notNull(filter, "Metrics filter predicate must not be null");
+            this.metricsFilter = filter;
+            return this;
+        }
+
+        /**
          * Sets the maximum value that this timer is expected to observe. Sets an upper bound on histogram buckets that are
          * shipped to monitoring systems that support aggregable percentile approximations. Only applicable when histogram is
          * enabled. Defaults to {@code 5m}. See {@link MicrometerOptions#DEFAULT_MAX_LATENCY}.
          *
-         * @param maxLatency The maximum value that this timer is expected to observe
+         * @param maxLatency the maximum value that this timer is expected to observe, must not be {@code null}
          * @return this {@link Builder}.
          */
         public Builder maxLatency(Duration maxLatency) {
@@ -200,7 +252,7 @@ public class MicrometerOptions {
          * shipped to monitoring systems that support aggregable percentile approximations. Only applicable when histogram is
          * enabled. Defaults to {@code 1ms}. See {@link MicrometerOptions#DEFAULT_MIN_LATENCY}.
          *
-         * @param minLatency The minimum value that this timer is expected to observe
+         * @param minLatency the minimum value that this timer is expected to observe
          * @return this {@link Builder}.
          */
         public Builder minLatency(Duration minLatency) {
@@ -212,7 +264,7 @@ public class MicrometerOptions {
         /**
          * Extra tags to add to the generated metrics. Defaults to {@code Tags.empty()}.
          *
-         * @param tags Tags to add to the metrics
+         * @param tags tags to add to the metrics
          * @return this {@link Builder}.
          */
         public Builder tags(Tags tags) {
@@ -222,8 +274,9 @@ public class MicrometerOptions {
         }
 
         /**
-         * Sets the emitted percentiles. Defaults to 0.50, 0.90, 0.95, 0.99, 0.999}. Only applicable when histogram is enabled.
-         * See {@link MicrometerOptions#DEFAULT_TARGET_PERCENTILES}.
+         * Sets the emitted percentiles. Defaults to {@code 0.50, 0.90, 0.95, 0.99, 0.999} for the 50th, 90th, 95th, 99th, and
+         * 99th percentiles. Only applicable when histogram is enabled. See
+         * {@link MicrometerOptions#DEFAULT_TARGET_PERCENTILES}.
          *
          * @param targetPercentiles the percentiles which should be emitted, must not be {@code null}
          * @return this {@link Builder}.
@@ -253,6 +306,10 @@ public class MicrometerOptions {
 
     public boolean localDistinction() {
         return localDistinction;
+    }
+
+    public Predicate<RedisCommand<?, ?, ?>> getMetricsFilter() {
+        return metricsFilter;
     }
 
     public Duration maxLatency() {

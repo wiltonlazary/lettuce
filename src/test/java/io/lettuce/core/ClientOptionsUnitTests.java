@@ -1,26 +1,21 @@
-/*
- * Copyright 2018-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static io.lettuce.TestTags.UNIT_TEST;
+import static org.assertj.core.api.Assertions.*;
 
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 
+import io.lettuce.core.json.DefaultJsonParser;
+import io.lettuce.core.json.JsonArray;
+import io.lettuce.core.json.JsonObject;
+import io.lettuce.core.json.JsonParser;
+import io.lettuce.core.json.JsonValue;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import io.lettuce.core.protocol.Command;
+import io.lettuce.core.protocol.CommandType;
 import io.lettuce.core.protocol.ProtocolVersion;
 
 /**
@@ -28,11 +23,23 @@ import io.lettuce.core.protocol.ProtocolVersion;
  *
  * @author Mark Paluch
  */
+@Tag(UNIT_TEST)
 class ClientOptionsUnitTests {
 
     @Test
     void testNew() {
         checkAssertions(ClientOptions.create());
+    }
+
+    @Test
+    void testDefault() {
+
+        ClientOptions options = ClientOptions.builder().build();
+
+        assertThat(options.getReadOnlyCommands().isReadOnly(new Command<>(CommandType.SET, null))).isFalse();
+        assertThat(options.getReadOnlyCommands().isReadOnly(new Command<>(CommandType.PUBLISH, null))).isFalse();
+        assertThat(options.getReadOnlyCommands().isReadOnly(new Command<>(CommandType.GET, null))).isTrue();
+        assertThat(options.getJsonParser().get()).isInstanceOf(DefaultJsonParser.class);
     }
 
     @Test
@@ -55,11 +62,52 @@ class ClientOptionsUnitTests {
         assertThat(original.mutate()).isNotSameAs(copy.mutate());
     }
 
+    @Test
+    void jsonParser() {
+        JsonParser parser = new CustomJsonParser();
+        ClientOptions options = ClientOptions.builder().jsonParser(() -> parser).build();
+        assertThat(options.getJsonParser().get()).isInstanceOf(CustomJsonParser.class);
+    }
+
+    static class CustomJsonParser implements JsonParser {
+
+        @Override
+        public JsonValue loadJsonValue(ByteBuffer buffer) {
+            return null;
+        }
+
+        @Override
+        public JsonValue createJsonValue(ByteBuffer bytes) {
+            return null;
+        }
+
+        @Override
+        public JsonValue createJsonValue(String value) {
+            return null;
+        }
+
+        @Override
+        public JsonObject createJsonObject() {
+            return null;
+        }
+
+        @Override
+        public JsonArray createJsonArray() {
+            return null;
+        }
+
+        @Override
+        public JsonValue fromObject(Object object) {
+            return null;
+        }
+
+    }
+
     void checkAssertions(ClientOptions sut) {
         assertThat(sut.isAutoReconnect()).isTrue();
-        assertThat(sut.isCancelCommandsOnReconnectFailure()).isFalse();
         assertThat(sut.getProtocolVersion()).isEqualTo(ProtocolVersion.RESP3);
         assertThat(sut.isSuspendReconnectOnProtocolFailure()).isFalse();
         assertThat(sut.getDisconnectedBehavior()).isEqualTo(ClientOptions.DisconnectedBehavior.DEFAULT);
     }
+
 }

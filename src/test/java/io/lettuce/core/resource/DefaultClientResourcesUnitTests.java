@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core.resource;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -22,6 +27,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import io.netty.resolver.dns.DnsAddressResolverGroup;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import reactor.test.StepVerifier;
@@ -33,6 +40,8 @@ import io.lettuce.test.TestFutures;
 import io.lettuce.test.Wait;
 import io.lettuce.test.resource.FastShutdown;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.EventLoopGroup;
+import io.netty.channel.MultithreadEventLoopGroup;
 import io.netty.resolver.AddressResolverGroup;
 import io.netty.util.HashedWheelTimer;
 import io.netty.util.Timer;
@@ -46,6 +55,7 @@ import io.netty.util.concurrent.Future;
  * @author Mark Paluch
  * @author Yohei Ueki
  */
+@Tag(UNIT_TEST)
 class DefaultClientResourcesUnitTests {
 
     @Test
@@ -61,7 +71,8 @@ class DefaultClientResourcesUnitTests {
         assertThat(timer).hasFieldOrPropertyWithValue("workerState", 1);
 
         EventExecutorGroup eventExecutors = sut.eventExecutorGroup();
-        NioEventLoopGroup eventLoopGroup = sut.eventLoopGroupProvider().allocate(NioEventLoopGroup.class);
+        MultithreadEventLoopGroup eventLoopGroup = (MultithreadEventLoopGroup) sut.eventLoopGroupProvider()
+                .allocate(NioEventLoopGroup.class);
 
         eventExecutors.next().submit(mock(Runnable.class));
         eventLoopGroup.next().submit(mock(Runnable.class));
@@ -84,7 +95,8 @@ class DefaultClientResourcesUnitTests {
                 .commandLatencyCollectorOptions(DefaultCommandLatencyCollectorOptions.disabled()).build();
 
         EventExecutorGroup eventExecutors = sut.eventExecutorGroup();
-        NioEventLoopGroup eventLoopGroup = sut.eventLoopGroupProvider().allocate(NioEventLoopGroup.class);
+        MultithreadEventLoopGroup eventLoopGroup = (MultithreadEventLoopGroup) sut.eventLoopGroupProvider()
+                .allocate(NioEventLoopGroup.class);
 
         assertThat(eventExecutors).hasSize(4);
         assertThat(eventLoopGroup.executorCount()).isEqualTo(4);
@@ -96,13 +108,12 @@ class DefaultClientResourcesUnitTests {
     }
 
     @Test
-    void testDnsResolver() {
+    void testShouldUseDnsAddressResolverGroup() {
+        DefaultClientResources sut = DefaultClientResources.create();
+        AddressResolverGroup<?> addressResolverGroup = sut.addressResolverGroup();
 
-        DirContextDnsResolver dirContextDnsResolver = new DirContextDnsResolver("8.8.8.8");
-
-        DefaultClientResources sut = DefaultClientResources.builder().dnsResolver(dirContextDnsResolver).build();
-
-        assertThat(sut.dnsResolver()).isEqualTo(dirContextDnsResolver);
+        assertThat(addressResolverGroup).as("Default AddressResolverGroup should be DnsAddressResolverGroup")
+                .isInstanceOf(DnsAddressResolverGroup.class);
     }
 
     @Test
@@ -177,7 +188,8 @@ class DefaultClientResourcesUnitTests {
         DefaultClientResources sut = DefaultClientResources.builder().ioThreadPoolSize(1).computationThreadPoolSize(1).build();
 
         EventExecutorGroup eventExecutors = sut.eventExecutorGroup();
-        NioEventLoopGroup eventLoopGroup = sut.eventLoopGroupProvider().allocate(NioEventLoopGroup.class);
+        MultithreadEventLoopGroup eventLoopGroup = (MultithreadEventLoopGroup) sut.eventLoopGroupProvider()
+                .allocate(NioEventLoopGroup.class);
 
         assertThat(eventExecutors).hasSize(2);
         assertThat(eventLoopGroup.executorCount()).isEqualTo(2);
@@ -284,7 +296,8 @@ class DefaultClientResourcesUnitTests {
         eventExecutor.submit(() -> eventExecutorThread.set(Thread.currentThread())).awaitUninterruptibly();
 
         AtomicReference<Thread> eventLoopThread = new AtomicReference<>();
-        NioEventLoopGroup eventLoopGroup = clientResources.eventLoopGroupProvider().allocate(NioEventLoopGroup.class);
+        MultithreadEventLoopGroup eventLoopGroup = (MultithreadEventLoopGroup) clientResources.eventLoopGroupProvider()
+                .allocate(NioEventLoopGroup.class);
         eventLoopGroup.next().submit(() -> eventLoopThread.set(Thread.currentThread())).awaitUninterruptibly();
 
         clientResources.eventLoopGroupProvider().release(eventLoopGroup, 0, 0, TimeUnit.SECONDS);

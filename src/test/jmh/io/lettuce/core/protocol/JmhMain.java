@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -35,9 +39,9 @@ public class JmhMain {
 
         // run selectively
         // runCommandBenchmark();
-        runCommandHandlerBenchmark();
+        // runCommandHandlerBenchmark();
         // runRedisEndpointBenchmark();
-        // runRedisStateMachineBenchmark();
+        runRedisStateMachineBenchmark();
         // runCommandEncoderBenchmark();
 
         // or all
@@ -83,14 +87,21 @@ public class JmhMain {
 
     private static void runRedisStateMachineBenchmark() throws RunnerException {
 
-        new Runner(prepareOptions().mode(Mode.AverageTime).timeUnit(TimeUnit.NANOSECONDS)
+        // measures AverageTime in ns (time/op)
+        new Runner(prepareRSMOptions().mode(Mode.AverageTime).timeUnit(TimeUnit.NANOSECONDS)
                 .include(".*RedisStateMachineBenchmark.*").build()).run();
-        // new
-        // Runner(prepareOptions().mode(Mode.Throughput).timeUnit(TimeUnit.SECONDS).include(".*CommandHandlerBenchmark.*").build()).run();
+
+        // measures Throughput (ops/sec)
+        new Runner(prepareRSMOptions().mode(Mode.Throughput).timeUnit(TimeUnit.SECONDS)
+                .include(".*RedisStateMachineBenchmark.*").build()).run();
     }
 
     private static ChainedOptionsBuilder prepareOptions() {
         return new OptionsBuilder().forks(1).warmupIterations(5).threads(1).measurementIterations(5)
                 .timeout(TimeValue.seconds(2));
+    }
+
+    private static ChainedOptionsBuilder prepareRSMOptions() {
+        return prepareOptions().addProfiler("gc");
     }
 }

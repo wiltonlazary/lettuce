@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -17,7 +21,11 @@ package io.lettuce.core.codec;
 
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
-import java.nio.charset.*;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetEncoder;
+import java.nio.charset.CoderResult;
+import java.nio.charset.StandardCharsets;
 
 import io.lettuce.core.internal.LettuceAssert;
 import io.netty.buffer.ByteBuf;
@@ -98,6 +106,16 @@ public class StringCodec implements RedisCodec<String, String>, ToByteBufEncoder
             return sizeOf((String) keyOrValue, true);
         }
         return 0;
+    }
+
+    @Override
+    public boolean isEstimateExact() {
+
+        if (ascii) {
+            return true;
+        }
+
+        return ToByteBufEncoder.super.isEstimateExact();
     }
 
     @Override
@@ -186,8 +204,8 @@ public class StringCodec implements RedisCodec<String, String>, ToByteBufEncoder
     }
 
     /**
-     * Calculate either the maximum number of bytes a string may occupy in a given character set or
-     * the average number of bytes it may hold.
+     * Calculate either the maximum number of bytes a string may occupy in a given character set or the average number of bytes
+     * it may hold.
      */
     int sizeOf(String value, boolean estimate) {
 
@@ -205,4 +223,5 @@ public class StringCodec implements RedisCodec<String, String>, ToByteBufEncoder
 
         return (int) maxBytesPerChar * value.length();
     }
+
 }

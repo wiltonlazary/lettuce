@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -27,6 +31,7 @@ import io.lettuce.core.cluster.models.partitions.RedisClusterNode;
 import io.lettuce.core.internal.LettuceAssert;
 import io.lettuce.core.protocol.DecodeBufferPolicy;
 import io.lettuce.core.protocol.ProtocolVersion;
+import io.lettuce.core.protocol.ReadOnlyCommands;
 
 /**
  * Client Options to control the behavior of {@link RedisClusterClient}.
@@ -38,6 +43,8 @@ public class ClusterClientOptions extends ClientOptions {
 
     public static final boolean DEFAULT_CLOSE_STALE_CONNECTIONS = true;
 
+    public static final ReadOnlyCommands.ReadOnlyPredicate DEFAULT_READ_ONLY_COMMANDS = ClusterReadOnlyCommands.asPredicate();
+
     public static final int DEFAULT_MAX_REDIRECTS = 5;
 
     public static final boolean DEFAULT_REFRESH_CLUSTER_VIEW = false;
@@ -46,7 +53,8 @@ public class ClusterClientOptions extends ClientOptions {
 
     public static final Duration DEFAULT_REFRESH_PERIOD_DURATION = Duration.ofSeconds(DEFAULT_REFRESH_PERIOD);
 
-    public static final boolean DEFAULT_VALIDATE_CLUSTER_MEMBERSHIP = true;
+    /** Since Lettuce 7.0 validation is by default disabled. */
+    public static final boolean DEFAULT_VALIDATE_CLUSTER_MEMBERSHIP = false;
 
     public static final Predicate<RedisClusterNode> DEFAULT_NODE_FILTER = node -> true;
 
@@ -123,10 +131,9 @@ public class ClusterClientOptions extends ClientOptions {
         }
 
         Builder builder = new Builder();
-        builder.autoReconnect(clientOptions.isAutoReconnect())
-                .cancelCommandsOnReconnectFailure(clientOptions.isCancelCommandsOnReconnectFailure())
-                .decodeBufferPolicy(clientOptions.getDecodeBufferPolicy())
+        builder.autoReconnect(clientOptions.isAutoReconnect()).decodeBufferPolicy(clientOptions.getDecodeBufferPolicy())
                 .disconnectedBehavior(clientOptions.getDisconnectedBehavior())
+                .reauthenticateBehavior(clientOptions.getReauthenticateBehaviour())
                 .pingBeforeActivateConnection(clientOptions.isPingBeforeActivateConnection())
                 .publishOnScheduler(clientOptions.isPublishOnScheduler())
                 .protocolVersion(clientOptions.getConfiguredProtocolVersion())
@@ -141,7 +148,7 @@ public class ClusterClientOptions extends ClientOptions {
     /**
      * Create a new {@link ClusterClientOptions} using default settings.
      *
-     * @return a new instance of default cluster client client options.
+     * @return a new instance of default cluster client options.
      */
     public static ClusterClientOptions create() {
         return builder().build();
@@ -163,38 +170,12 @@ public class ClusterClientOptions extends ClientOptions {
         private ClusterTopologyRefreshOptions topologyRefreshOptions = null;
 
         protected Builder() {
+            readOnlyCommands(DEFAULT_READ_ONLY_COMMANDS);
         }
 
         @Override
         public Builder autoReconnect(boolean autoReconnect) {
             super.autoReconnect(autoReconnect);
-            return this;
-        }
-
-        /**
-         * @param bufferUsageRatio the buffer usage ratio. Must be between {@code 0} and {@code 2^31-1}, typically a value
-         *        between 1 and 10 representing 50% to 90%.
-         * @return {@code this}
-         * @deprecated since 6.0 in favor of {@link DecodeBufferPolicy}.
-         */
-        @Override
-        @Deprecated
-        public Builder bufferUsageRatio(int bufferUsageRatio) {
-            super.bufferUsageRatio(bufferUsageRatio);
-            return this;
-        }
-
-        /**
-         *
-         * @param cancelCommandsOnReconnectFailure true/false
-         * @return
-         * @deprecated since 6.2, to be removed with 7.0. This feature is unsafe and may cause protocol offsets if true (i.e.
-         *             Redis commands are completed with previous command values).
-         */
-        @Override
-        @Deprecated
-        public Builder cancelCommandsOnReconnectFailure(boolean cancelCommandsOnReconnectFailure) {
-            super.cancelCommandsOnReconnectFailure(cancelCommandsOnReconnectFailure);
             return this;
         }
 
@@ -207,6 +188,12 @@ public class ClusterClientOptions extends ClientOptions {
         @Override
         public Builder disconnectedBehavior(DisconnectedBehavior disconnectedBehavior) {
             super.disconnectedBehavior(disconnectedBehavior);
+            return this;
+        }
+
+        @Override
+        public Builder reauthenticateBehavior(ReauthenticateBehavior reauthenticateBehavior) {
+            super.reauthenticateBehavior(reauthenticateBehavior);
             return this;
         }
 
@@ -243,6 +230,13 @@ public class ClusterClientOptions extends ClientOptions {
         @Override
         public Builder publishOnScheduler(boolean publishOnScheduler) {
             super.publishOnScheduler(publishOnScheduler);
+            return this;
+        }
+
+        @Override
+        public Builder readOnlyCommands(ReadOnlyCommands.ReadOnlyPredicate readOnlyCommands) {
+
+            super.readOnlyCommands(readOnlyCommands);
             return this;
         }
 
@@ -288,8 +282,12 @@ public class ClusterClientOptions extends ClientOptions {
         }
 
         /**
-         * Validate the cluster node membership before allowing connections to a cluster node. Defaults to {@code true}. See
+         * Validate the cluster node membership before allowing connections to a cluster node. Defaults to {@code false}. See
          * {@link ClusterClientOptions#DEFAULT_VALIDATE_CLUSTER_MEMBERSHIP}.
+         * <p/>
+         * Since 7.0, validation is disabled by default, as it is causing problems in some upgrade scenarios. In scenarios where
+         * upgraded nodes are added to the cluster the ASK / MOVED replies usually come before the topology is refreshed and -
+         * respectively - this validation would fail.
          *
          * @param validateClusterNodeMembership {@code true} if validation is enabled.
          * @return {@code this}
@@ -338,12 +336,11 @@ public class ClusterClientOptions extends ClientOptions {
 
         Builder builder = new Builder();
 
-        builder.autoReconnect(isAutoReconnect())
-                .cancelCommandsOnReconnectFailure(isCancelCommandsOnReconnectFailure())
-                .decodeBufferPolicy(getDecodeBufferPolicy())
-                .disconnectedBehavior(getDisconnectedBehavior()).maxRedirects(getMaxRedirects())
-                .publishOnScheduler(isPublishOnScheduler()).pingBeforeActivateConnection(isPingBeforeActivateConnection())
-                .protocolVersion(getConfiguredProtocolVersion()).requestQueueSize(getRequestQueueSize())
+        builder.autoReconnect(isAutoReconnect()).decodeBufferPolicy(getDecodeBufferPolicy())
+                .disconnectedBehavior(getDisconnectedBehavior()).reauthenticateBehavior(getReauthenticateBehaviour())
+                .maxRedirects(getMaxRedirects()).publishOnScheduler(isPublishOnScheduler())
+                .pingBeforeActivateConnection(isPingBeforeActivateConnection()).protocolVersion(getConfiguredProtocolVersion())
+                .readOnlyCommands(getReadOnlyCommands()).requestQueueSize(getRequestQueueSize())
                 .scriptCharset(getScriptCharset()).socketOptions(getSocketOptions()).sslOptions(getSslOptions())
                 .suspendReconnectOnProtocolFailure(isSuspendReconnectOnProtocolFailure()).timeoutOptions(getTimeoutOptions())
                 .topologyRefreshOptions(getTopologyRefreshOptions())
@@ -394,7 +391,6 @@ public class ClusterClientOptions extends ClientOptions {
         return topologyRefreshOptions.getRefreshPeriod();
     }
 
-
     /**
      * The {@link ClusterTopologyRefreshOptions} for detailed control of topology updates.
      *
@@ -405,7 +401,7 @@ public class ClusterClientOptions extends ClientOptions {
     }
 
     /**
-     * Validate the cluster node membership before allowing connections to a cluster node. Defaults to {@code true}.
+     * Validate the cluster node membership before allowing connections to a cluster node. Defaults to {@code false}.
      *
      * @return {@code true} if validation is enabled.
      */

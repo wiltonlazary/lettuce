@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -18,6 +22,7 @@ package io.lettuce.core.masterreplica;
 import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 
+import io.lettuce.core.ClientOptions;
 import io.lettuce.core.ReadFrom;
 import io.lettuce.core.RedisChannelWriter;
 import io.lettuce.core.RedisException;
@@ -33,6 +38,7 @@ import io.lettuce.core.resource.ClientResources;
  * Channel writer/dispatcher that dispatches commands based on the ConnectionIntent to different connections.
  *
  * @author Mark Paluch
+ * @author Jim Brunner
  */
 class MasterReplicaChannelWriter implements RedisChannelWriter {
 
@@ -40,14 +46,20 @@ class MasterReplicaChannelWriter implements RedisChannelWriter {
 
     private final ClientResources clientResources;
 
+    private final ClientOptions clientOptions;
+
+    private final io.lettuce.core.protocol.ReadOnlyCommands.ReadOnlyPredicate readOnlyCommands;
+
     private boolean closed = false;
 
     private boolean inTransaction;
 
     MasterReplicaChannelWriter(MasterReplicaConnectionProvider<?, ?> masterReplicaConnectionProvider,
-            ClientResources clientResources) {
+            ClientResources clientResources, ClientOptions clientOptions) {
         this.masterReplicaConnectionProvider = masterReplicaConnectionProvider;
         this.clientResources = clientResources;
+        this.clientOptions = clientOptions;
+        this.readOnlyCommands = clientOptions.getReadOnlyCommands();
     }
 
     @Override
@@ -64,7 +76,8 @@ class MasterReplicaChannelWriter implements RedisChannelWriter {
             inTransaction = true;
         }
 
-        ConnectionIntent connectionIntent = inTransaction ? ConnectionIntent.WRITE : getIntent(command.getType());
+        ConnectionIntent connectionIntent = inTransaction ? ConnectionIntent.WRITE
+                : (readOnlyCommands.isReadOnly(command) ? ConnectionIntent.READ : ConnectionIntent.WRITE);
         CompletableFuture<StatefulRedisConnection<K, V>> future = (CompletableFuture) masterReplicaConnectionProvider
                 .getConnectionAsync(connectionIntent);
 
@@ -162,33 +175,20 @@ class MasterReplicaChannelWriter implements RedisChannelWriter {
      * @param commands {@link Collection} of {@link RedisCommand commands}.
      * @return the ConnectionIntent.
      */
-    static ConnectionIntent getIntent(Collection<? extends RedisCommand<?, ?, ?>> commands) {
+    ConnectionIntent getIntent(Collection<? extends RedisCommand<?, ?, ?>> commands) {
 
-        boolean w = false;
-        boolean r = false;
-        ConnectionIntent singleIntent = ConnectionIntent.WRITE;
+        if (commands.isEmpty()) {
+            return ConnectionIntent.WRITE;
+        }
 
         for (RedisCommand<?, ?, ?> command : commands) {
 
-            singleIntent = getIntent(command.getType());
-            if (singleIntent == ConnectionIntent.READ) {
-                r = true;
-            }
-
-            if (singleIntent == ConnectionIntent.WRITE) {
-                w = true;
-            }
-
-            if (r && w) {
+            if (!readOnlyCommands.isReadOnly(command)) {
                 return ConnectionIntent.WRITE;
             }
         }
 
-        return singleIntent;
-    }
-
-    private static ConnectionIntent getIntent(ProtocolKeyword type) {
-        return ReadOnlyCommands.isReadOnlyCommand(type) ? ConnectionIntent.READ : ConnectionIntent.WRITE;
+        return ConnectionIntent.READ;
     }
 
     @Override
@@ -242,11 +242,6 @@ class MasterReplicaChannelWriter implements RedisChannelWriter {
         masterReplicaConnectionProvider.flushCommands();
     }
 
-    @Override
-    public void reset() {
-        masterReplicaConnectionProvider.reset();
-    }
-
     /**
      * Set from which nodes data is read. The setting is used as default for read operations on this connection. See the
      * documentation for {@link ReadFrom} for more information.
@@ -271,11 +266,11 @@ class MasterReplicaChannelWriter implements RedisChannelWriter {
     }
 
     private static boolean isStartTransaction(ProtocolKeyword command) {
-        return command.name().equals("MULTI");
+        return command.toString().equals("MULTI");
     }
 
     private boolean isEndTransaction(ProtocolKeyword command) {
-        return command.name().equals("EXEC") || command.name().equals("DISCARD");
+        return command.toString().equals("EXEC") || command.toString().equals("DISCARD");
     }
 
 }

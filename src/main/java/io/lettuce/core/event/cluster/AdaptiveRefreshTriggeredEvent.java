@@ -1,7 +1,11 @@
 /*
- * Copyright 2019-2022 the original author or authors.
+ * Copyright 2019-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -17,6 +21,7 @@ package io.lettuce.core.event.cluster;
 
 import java.util.function.Supplier;
 
+import io.lettuce.core.cluster.ClusterTopologyRefreshOptions;
 import io.lettuce.core.cluster.models.partitions.Partitions;
 import io.lettuce.core.event.Event;
 
@@ -32,9 +37,13 @@ public class AdaptiveRefreshTriggeredEvent implements Event {
 
     private final Runnable topologyRefreshScheduler;
 
-    public AdaptiveRefreshTriggeredEvent(Supplier<Partitions> partitionsSupplier, Runnable topologyRefreshScheduler) {
+    private final ClusterTopologyRefreshOptions.RefreshTrigger refreshTrigger;
+
+    public AdaptiveRefreshTriggeredEvent(Supplier<Partitions> partitionsSupplier, Runnable topologyRefreshScheduler,
+            ClusterTopologyRefreshOptions.RefreshTrigger refreshTrigger) {
         this.partitionsSupplier = partitionsSupplier;
         this.topologyRefreshScheduler = topologyRefreshScheduler;
+        this.refreshTrigger = refreshTrigger;
     }
 
     /**
@@ -51,6 +60,68 @@ public class AdaptiveRefreshTriggeredEvent implements Event {
      */
     public Partitions getPartitions() {
         return partitionsSupplier.get();
+    }
+
+    /**
+     * Retrieve the {@link ClusterTopologyRefreshOptions.RefreshTrigger} that caused this event.
+     *
+     * @return the {@link ClusterTopologyRefreshOptions.RefreshTrigger} that caused this event.
+     */
+    public ClusterTopologyRefreshOptions.RefreshTrigger getRefreshTrigger() {
+        return refreshTrigger;
+    }
+
+    /**
+     * Extension to {@link AdaptiveRefreshTriggeredEvent} providing the reconnect-attempt counter value.
+     *
+     * @since 6.2.3
+     */
+    public static class PersistentReconnectsAdaptiveRefreshTriggeredEvent extends AdaptiveRefreshTriggeredEvent {
+
+        private final int attempt;
+
+        public PersistentReconnectsAdaptiveRefreshTriggeredEvent(Supplier<Partitions> partitionsSupplier,
+                Runnable topologyRefreshScheduler, int attempt) {
+            super(partitionsSupplier, topologyRefreshScheduler,
+                    ClusterTopologyRefreshOptions.RefreshTrigger.PERSISTENT_RECONNECTS);
+            this.attempt = attempt;
+        }
+
+        /**
+         * Return the reconnection-attempt at which this event was emitted.
+         *
+         * @return the reconnection-attempt at which this event was emitted.
+         */
+        public int getAttempt() {
+            return attempt;
+        }
+
+    }
+
+    /**
+     * Extension to {@link AdaptiveRefreshTriggeredEvent} providing the uncovered slot value.
+     *
+     * @since 6.2.3
+     */
+    public static class UncoveredSlotAdaptiveRefreshTriggeredEvent extends AdaptiveRefreshTriggeredEvent {
+
+        private final int slot;
+
+        public UncoveredSlotAdaptiveRefreshTriggeredEvent(Supplier<Partitions> partitionsSupplier,
+                Runnable topologyRefreshScheduler, int slot) {
+            super(partitionsSupplier, topologyRefreshScheduler, ClusterTopologyRefreshOptions.RefreshTrigger.UNCOVERED_SLOT);
+            this.slot = slot;
+        }
+
+        /**
+         * Return the slot that is not covered.
+         *
+         * @return the slot that is not covered.
+         */
+        public int getSlot() {
+            return slot;
+        }
+
     }
 
 }

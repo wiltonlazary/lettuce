@@ -1,18 +1,3 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.protocol;
 
 import java.nio.charset.Charset;
@@ -91,10 +76,12 @@ public class CommandEncoder extends MessageToByteEncoder<Object> {
         try {
             out.markWriterIndex();
             command.encode(out);
-        } catch (RuntimeException e) {
-            out.resetWriterIndex();
-            command.completeExceptionally(new EncoderException(
-                    "Cannot encode command. Please close the connection as the connection state may be out of sync.", e));
+        } catch (Throwable e) {
+            ctx.close();
+            logger.error("{} Cannot encode command. Closing the connection as the connection state may be out of sync.",
+                    logPrefix(ctx.channel()), e);
+            throw new EncoderException(
+                    "Cannot encode command. Closing the connection as the connection state may be out of sync.", e);
         }
 
         if (debugEnabled) {

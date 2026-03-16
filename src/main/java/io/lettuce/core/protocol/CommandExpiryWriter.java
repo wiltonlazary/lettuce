@@ -1,7 +1,11 @@
 /*
- * Copyright 2017-2022 the original author or authors.
+ * Copyright 2017-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -21,25 +25,28 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 import io.lettuce.core.ClientOptions;
+import io.lettuce.core.Delegating;
 import io.lettuce.core.RedisChannelWriter;
 import io.lettuce.core.TimeoutOptions;
 import io.lettuce.core.internal.ExceptionFactory;
 import io.lettuce.core.internal.LettuceAssert;
 import io.lettuce.core.resource.ClientResources;
+import io.netty.util.Timeout;
+import io.netty.util.Timer;
 
 /**
  * Extension to {@link RedisChannelWriter} that expires commands. Command timeout starts at the time the command is written
  * regardless to {@link #setAutoFlushCommands(boolean) flushing mode} (user-controlled batching).
  *
  * @author Mark Paluch
+ * @author Tianyi Yang
  * @since 5.1
  * @see io.lettuce.core.TimeoutOptions
  */
-public class CommandExpiryWriter implements RedisChannelWriter {
+public class CommandExpiryWriter implements RedisChannelWriter, Delegating<RedisChannelWriter> {
 
     private final RedisChannelWriter delegate;
 
@@ -49,9 +56,11 @@ public class CommandExpiryWriter implements RedisChannelWriter {
 
     private final ScheduledExecutorService executorService;
 
+    private final Timer timer;
+
     private final boolean applyConnectionTimeout;
 
-    private volatile long timeout = -1;
+    volatile long timeout = -1;
 
     /**
      * Create a new {@link CommandExpiryWriter}.
@@ -72,6 +81,26 @@ public class CommandExpiryWriter implements RedisChannelWriter {
         this.applyConnectionTimeout = timeoutOptions.isApplyConnectionTimeout();
         this.timeUnit = source.getTimeUnit();
         this.executorService = clientResources.eventExecutorGroup();
+        this.timer = clientResources.timer();
+    }
+
+    /**
+     * Create a new {@link CommandExpiryWriter} or {@link MaintenanceAwareExpiryWriter} depending on the {@link ClientOptions}
+     * configuration.
+     *
+     * @param delegate must not be {@code null}.
+     * @param clientOptions must not be {@code null}.
+     * @param clientResources must not be {@code null}.
+     * @return the {@link CommandExpiryWriter} or {@link MaintenanceAwareExpiryWriter}.
+     * @since 7.0
+     */
+    public static RedisChannelWriter buildCommandExpiryWriter(RedisChannelWriter delegate, ClientOptions clientOptions,
+            ClientResources clientResources) {
+        if (clientOptions.getMaintNotificationsConfig().maintNotificationsEnabled()) {
+            return new MaintenanceAwareExpiryWriter(delegate, clientOptions, clientResources);
+        } else {
+            return new CommandExpiryWriter(delegate, clientOptions, clientResources);
+        }
     }
 
     /**
@@ -143,11 +172,6 @@ public class CommandExpiryWriter implements RedisChannelWriter {
         return delegate.closeAsync();
     }
 
-    @Override
-    public void reset() {
-        delegate.reset();
-    }
-
     public void setTimeout(Duration timeout) {
         this.timeout = timeUnit.convert(timeout.toNanos(), TimeUnit.NANOSECONDS);
     }
@@ -160,7 +184,6 @@ public class CommandExpiryWriter implements RedisChannelWriter {
         return this.executorService;
     }
 
-    @SuppressWarnings("unchecked")
     private void potentiallyExpire(RedisCommand<?, ?, ?> command, ScheduledExecutorService executors) {
 
         long timeout = applyConnectionTimeout ? this.timeout : source.getTimeout(command);
@@ -169,23 +192,18 @@ public class CommandExpiryWriter implements RedisChannelWriter {
             return;
         }
 
-        ScheduledFuture<?> schedule = executors.schedule(() -> {
-
+        Timeout commandTimeout = timer.newTimeout(t -> {
             if (!command.isDone()) {
-                command.completeExceptionally(
-                        ExceptionFactory.createTimeoutException(Duration.ofNanos(timeUnit.toNanos(timeout))));
-            }
+                executors.submit(() -> command.completeExceptionally(ExceptionFactory
+                        .createTimeoutException(command.getType().toString(), Duration.ofNanos(timeUnit.toNanos(timeout)))));
 
+            }
         }, timeout, timeUnit);
 
         if (command instanceof CompleteableCommand) {
-            ((CompleteableCommand) command).onComplete((o, o2) -> {
-
-                if (!schedule.isDone()) {
-                    schedule.cancel(false);
-                }
-            });
+            ((CompleteableCommand<?>) command).onComplete((o, o2) -> commandTimeout.cancel());
         }
+
     }
 
 }

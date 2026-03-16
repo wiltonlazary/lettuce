@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2017-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -17,6 +21,8 @@
 package io.lettuce.core.api.coroutines
 
 import io.lettuce.core.*
+import io.lettuce.core.TrackingInfo
+import io.lettuce.core.annotations.Experimental
 import io.lettuce.core.protocol.CommandType
 import java.util.*
 
@@ -104,11 +110,28 @@ interface RedisServerCoroutinesCommands<K : Any, V : Any> {
     suspend fun clientList(): String?
 
     /**
+     * Get the list of client connections which are filtered by `clientListArgs`.
+     *
+     * @return String bulk-string-reply a unique string, formatted as follows: One client connection per line (separated by LF),
+     *         each line is composed of a succession of property=value fields separated by a space character.
+     * @since 6.3
+     */
+    suspend fun clientList(clientListArgs: ClientListArgs): String?
+
+    /**
+     * Get the list of the current client connection.
+     *
+     * @return String bulk-string-reply a unique string, formatted as a succession of property=value fields separated by a space character.
+     * @since 6.3
+     */
+    suspend fun clientInfo(): String?
+
+    /**
      * Sets the client eviction mode for the current connection.
-	 *
-	 * @param on @code true} will turn eviction mode on, and `false` will turn it off.
-	 * @return String simple-string-reply `OK`.
-	 * @since 6.2
+     *
+     * @param on @code true} will turn eviction mode on, and `false` will turn it off.
+     * @return String simple-string-reply `OK`.
+     * @since 6.2
      */
     suspend fun clientNoEvict(on: Boolean): String?
 
@@ -129,6 +152,16 @@ interface RedisServerCoroutinesCommands<K : Any, V : Any> {
     suspend fun clientSetname(name: K): String?
 
     /**
+     * Assign various info attributes to the current connection.
+     *
+     * @param key the key.
+     * @param value the value.
+     * @return simple-string-reply `OK` if the connection name was successfully set.
+     * @since 6.3
+     */
+    suspend fun clientSetinfo(key: String, value: String): String?
+
+    /**
      * Enables the tracking feature of the Redis server, that is used for server assisted client side caching. Tracking messages
      * are either available when using the RESP3 protocol or through Pub/Sub notification when using RESP2.
      *
@@ -137,6 +170,14 @@ interface RedisServerCoroutinesCommands<K : Any, V : Any> {
      * @since 6.0
      */
     suspend fun clientTracking(args: TrackingArgs): String?
+
+    /**
+     * Returns information about the current client connection's use of the server assisted client side caching feature.
+     *
+     * @return @link TrackingInfo}, for more information check the documentation
+     * @since 6.5
+     */
+    suspend fun clientTrackinginfo(): TrackingInfo?
 
     /**
      * Unblock the specified blocked client.
@@ -318,7 +359,10 @@ interface RedisServerCoroutinesCommands<K : Any, V : Any> {
      * @return String simple-string-reply.
      * @deprecated since 6.1, use [flushall(FlushMode)] instead.
      */
-    @Deprecated("Use [flushall(FlushMode.ASYNC)] instead.", ReplaceWith("flushall(FlushMode.ASYNC)"))
+    @Deprecated(
+        "Use [flushall(FlushMode.ASYNC)] instead.",
+        ReplaceWith("flushall(FlushMode.ASYNC)")
+    )
     suspend fun flushallAsync(): String?
 
     /**
@@ -343,8 +387,48 @@ interface RedisServerCoroutinesCommands<K : Any, V : Any> {
      * @return String simple-string-reply.
      * @deprecated since 6.1, use [flushdb(FlushMode)] instead.
      */
-    @Deprecated("Use [flushdb(FlushMode.ASYNC)] instead.", ReplaceWith("flushdb(FlushMode.ASYNC)"))
+    @Deprecated(
+        "Use [flushdb(FlushMode.ASYNC)] instead.",
+        ReplaceWith("flushdb(FlushMode.ASYNC)")
+    )
     suspend fun flushdbAsync(): String?
+
+    /**
+     * Start hotkeys tracking.
+     *
+     * @param args tracking arguments.
+     * @return String simple-string-reply `OK`.
+     * @since 7.4
+     */
+    @Experimental
+    suspend fun hotkeysStart(args: HotkeysArgs): String?
+
+    /**
+     * Stop hotkeys tracking but retain data.
+     *
+     * @return String simple-string-reply `OK`.
+     * @since 7.4
+     */
+    @Experimental
+    suspend fun hotkeysStop(): String?
+
+    /**
+     * Reset hotkeys tracking data.
+     *
+     * @return String simple-string-reply `OK`.
+     * @since 7.4
+     */
+    @Experimental
+    suspend fun hotkeysReset(): String?
+
+    /**
+     * Get hotkeys tracking results.
+     *
+     * @return @link HotkeysReply} with tracking data, or `null` if no tracking session.
+     * @since 7.4
+     */
+    @Experimental
+    suspend fun hotkeysGet(): HotkeysReply?
 
     /**
      * Get information and statistics about the server.
@@ -366,43 +450,43 @@ interface RedisServerCoroutinesCommands<K : Any, V : Any> {
      *
      * @return Date integer-reply an UNIX time stamp.
      */
-	suspend fun lastsave(): Date?
+    suspend fun lastsave(): Date?
 
-	/**
-	 * Reports the number of bytes that a key and its value require to be stored in RAM.
-	 *
-	 * @return memory usage in bytes.
-	 * @since 5.2
-	 */
-	suspend fun memoryUsage(key: K): Long?
+    /**
+     * Reports the number of bytes that a key and its value require to be stored in RAM.
+     *
+     * @return memory usage in bytes.
+     * @since 5.2
+     */
+    suspend fun memoryUsage(key: K): Long?
 
-	/**
-	 * Make the server a replica of another instance.
-	 *
-	 * @param host the host type: string.
-	 * @param port the port type: string.
-	 * @return String simple-string-reply.
-	 * @since 6.1.7
-	 */
-	suspend fun replicaof(host: String, port: Int): String?
+    /**
+     * Make the server a replica of another instance.
+     *
+     * @param host the host type: string.
+     * @param port the port type: string.
+     * @return String simple-string-reply.
+     * @since 6.1.7
+     */
+    suspend fun replicaof(host: String, port: Int): String?
 
-	/**
-	 * Promote server as master.
-	 *
-	 * @return String simple-string-reply.
-	 * @since 6.1.7
-	 */
-	suspend fun replicaofNoOne(): String?
+    /**
+     * Promote server as master.
+     *
+     * @return String simple-string-reply.
+     * @since 6.1.7
+     */
+    suspend fun replicaofNoOne(): String?
 
-	/**
-	 * Synchronously save the dataset to disk.
-	 *
-	 * @return String simple-string-reply The commands returns OK on success.
-	 */
-	suspend fun save(): String?
+    /**
+     * Synchronously save the dataset to disk.
+     *
+     * @return String simple-string-reply The commands returns OK on success.
+     */
+    suspend fun save(): String?
 
-	/**
-	 * Synchronously save the dataset to disk and then shut down the server.
+    /**
+     * Synchronously save the dataset to disk and then shut down the server.
      *
      * @param save @code true} force save operation.
      */
@@ -412,25 +496,31 @@ interface RedisServerCoroutinesCommands<K : Any, V : Any> {
      * Synchronously save the dataset to disk and then shutdown the server.
      *
      * @param args
+     * @since 6.2
      */
     suspend fun shutdown(args: ShutdownArgs)
 
     /**
-	 * Make the server a replica of another instance.
-	 *
-	 * @param host the host type: string.
-	 * @param port the port type: string.
-	 * @return String simple-string-reply.
-	 * @deprecated since 6.1.7, use [replicaof(String, Integer)] instead.
+     * Make the server a replica of another instance.
+     *
+     * @param host the host type: string.
+     * @param port the port type: string.
+     * @return String simple-string-reply.
+     * @deprecated since 6.1.7, use [replicaof(String, Integer)] instead.
      */
+    @Deprecated(
+        "Use [replicaof(host, port)] instead.",
+        ReplaceWith("replicaof(host, port)")
+    )
     suspend fun slaveof(host: String, port: Int): String?
 
     /**
-	 * Promote server as master.
-	 *
-	 * @return String simple-string-reply.
-	 * @deprecated since 6.1.7, use [replicaofNoOne] instead.
+     * Promote server as master.
+     *
+     * @return String simple-string-reply.
+     * @deprecated since 6.1.7, use [replicaofNoOne] instead.
      */
+    @Deprecated("Use [replicaofNoOne()] instead.", ReplaceWith("replicaofNoOne()"))
     suspend fun slaveofNoOne(): String?
 
     /**

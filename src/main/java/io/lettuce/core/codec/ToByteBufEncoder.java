@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -27,6 +31,7 @@ import io.netty.buffer.ByteBuf;
  * </p>
  *
  * @author Mark Paluch
+ * @author shikharid
  * @since 4.3
  */
 public interface ToByteBufEncoder<K, V> {
@@ -55,5 +60,16 @@ public interface ToByteBufEncoder<K, V> {
      * @return the estimated number of bytes in the encoded representation.
      */
     int estimateSize(Object keyOrValue);
+
+    /**
+     * Returns {@code true} if {@link #estimateSize(Object)} returns exact size This is used as an optimization to reduce memory
+     * allocations when encoding data.
+     *
+     * @return {@code true} if {@link #estimateSize(Object)} returns exact size.
+     * @since 6.3.2
+     */
+    default boolean isEstimateExact() {
+        return false;
+    }
 
 }

@@ -1,25 +1,13 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.sentinel;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.*;
 
 import javax.inject.Inject;
 
+import io.lettuce.core.RedisCredentials;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -32,12 +20,14 @@ import io.lettuce.test.LettuceExtension;
 import io.lettuce.test.WithPassword;
 import io.lettuce.test.condition.EnabledOnCommand;
 import io.lettuce.test.settings.TestSettings;
+import reactor.core.publisher.Mono;
 
 /**
  * Integration tests for Redis Sentinel using ACL authentication.
  *
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 @EnabledOnCommand("ACL")
 public class SentinelAclIntegrationTests extends TestSupport {
@@ -59,13 +49,13 @@ public class SentinelAclIntegrationTests extends TestSupport {
 
         // sentinel node auth
         for (RedisURI sentinel : redisURI.getSentinels()) {
-            sentinel.setPassword(TestSettings.password());
+            sentinel.setAuthentication(TestSettings.password());
         }
 
         // sentinel node auth
         for (RedisURI sentinel : sentinelWithAcl.getSentinels()) {
-            sentinel.setUsername(TestSettings.aclUsername());
-            sentinel.setPassword(TestSettings.aclPassword());
+            sentinel.setCredentialsProvider(
+                    () -> Mono.just(RedisCredentials.just(TestSettings.aclUsername(), TestSettings.aclPassword())));
         }
     }
 

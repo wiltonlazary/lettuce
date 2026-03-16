@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,30 +19,33 @@
  */
 package io.lettuce.core.commands;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static io.lettuce.core.SetArgs.Builder.*;
-import static io.lettuce.core.StringMatchResult.*;
-import static org.assertj.core.api.Assertions.*;
+import static io.lettuce.core.StringMatchResult.Position;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import javax.inject.Inject;
 
+import io.lettuce.core.cluster.SlotHash;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import io.lettuce.core.GetExArgs;
-import io.lettuce.core.KeyValue;
-import io.lettuce.core.RedisException;
-import io.lettuce.core.SetArgs;
-import io.lettuce.core.StrAlgoArgs;
-import io.lettuce.core.StringMatchResult;
-import io.lettuce.core.TestSupport;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import io.lettuce.core.*;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.test.KeyValueStreamingAdapter;
 import io.lettuce.test.LettuceExtension;
@@ -52,11 +59,16 @@ import io.lettuce.test.condition.EnabledOnCommand;
  * @author dengliming
  * @author Andrey Shlykov
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class StringCommandIntegrationTests extends TestSupport {
 
     private final RedisCommands<String, String> redis;
+
+    protected final String KEY_1 = "key1{k}";
+
+    protected final String KEY_2 = "key2{k}";
 
     @Inject
     protected StringCommandIntegrationTests(RedisCommands<String, String> redis) {
@@ -166,6 +178,51 @@ public class StringCommandIntegrationTests extends TestSupport {
         assertThat(redis.get("two")).isEqualTo("2");
     }
 
+    @ParameterizedTest(name = "MSETEX NX + {0} with cross-slot keys")
+    @MethodSource("msetexNxArgsProvider")
+    @EnabledOnCommand("MSETEX")
+    protected void msetexNxWithCrossSlotKeys_parametrized(String optionLabel, MSetExArgs args) {
+
+        // Build 16 keys with distinct hash tags so they map across 16 evenly-partitioned buckets over 16000 slots
+        final int buckets = 16;
+        Map<String, String> map = new LinkedHashMap<>();
+
+        for (int b = 0; b < buckets; b++) {
+            for (int j = 0;; j++) { // find a tag that lands in bucket b
+                String k = "msetex:{t" + b + '-' + j + "}"; // only the tag influences the slot
+                int slot = SlotHash.getSlot(k);
+                int bucket = Math.min(slot / 1000, buckets - 1);
+                if (bucket == b) {
+                    map.put(k, "v" + b);
+                    break;
+                }
+            }
+        }
+
+        // Execute MSETEX with NX + the provided option
+        Boolean result = redis.msetex(map, args);
+        assertThat(result).isTrue();
+
+        // Verify TTL semantics depending on option
+        String anyKey = map.keySet().iterator().next();
+        long ttl = redis.ttl(anyKey);
+        if ("KEEPTTL".equals(optionLabel)) {
+            // KEEPTTL with NX on new keys -> no expiration should be set
+            assertThat(ttl).isEqualTo(-1);
+        } else {
+            // Expiring variants (EX/PX/EXAT/PXAT): TTL should be > 0 shortly after
+            assertThat(ttl).isGreaterThan(0L);
+        }
+    }
+
+    static Stream<Arguments> msetexNxArgsProvider() {
+        return Stream.of(Arguments.of("EX", MSetExArgs.Builder.nx().ex(Duration.ofSeconds(5))),
+                Arguments.of("PX", MSetExArgs.Builder.nx().px(Duration.ofMillis(5000))),
+                Arguments.of("EXAT", MSetExArgs.Builder.nx().exAt(Instant.now().plusSeconds(5))),
+                Arguments.of("PXAT", MSetExArgs.Builder.nx().pxAt(Instant.now().plusSeconds(5))),
+                Arguments.of("KEEPTTL", MSetExArgs.Builder.nx().keepttl()));
+    }
+
     @Test
     void set() {
         assertThat(redis.get(key)).isNull();
@@ -226,12 +283,12 @@ public class StringCommandIntegrationTests extends TestSupport {
 
     @Test
     void setNegativeEX() {
-        assertThatThrownBy(() -> redis.set(key, value, ex(-10))).isInstanceOf(RedisException. class);
+        assertThatThrownBy(() -> redis.set(key, value, ex(-10))).isInstanceOf(RedisException.class);
     }
 
     @Test
     void setNegativePX() {
-        assertThatThrownBy(() -> redis.set(key, value, px(-1000))).isInstanceOf(RedisException. class);
+        assertThatThrownBy(() -> redis.set(key, value, px(-1000))).isInstanceOf(RedisException.class);
     }
 
     @Test
@@ -305,13 +362,11 @@ public class StringCommandIntegrationTests extends TestSupport {
     @EnabledOnCommand("STRALGO")
     void strAlgo() {
 
-        StringMatchResult matchResult = redis.stralgoLcs(StrAlgoArgs.Builder
-                .strings("ohmytext", "mynewtext"));
+        StringMatchResult matchResult = redis.stralgoLcs(StrAlgoArgs.Builder.strings("ohmytext", "mynewtext"));
         assertThat(matchResult.getMatchString()).isEqualTo("mytext");
 
         // STRALGO LCS STRINGS a b
-        matchResult = redis.stralgoLcs(StrAlgoArgs.Builder
-                .strings("a", "b").minMatchLen(4).withIdx().withMatchLen());
+        matchResult = redis.stralgoLcs(StrAlgoArgs.Builder.strings("a", "b").minMatchLen(4).withIdx().withMatchLen());
         assertThat(matchResult.getMatchString()).isNullOrEmpty();
         assertThat(matchResult.getLen()).isEqualTo(0);
     }
@@ -320,10 +375,10 @@ public class StringCommandIntegrationTests extends TestSupport {
     @EnabledOnCommand("STRALGO")
     void strAlgoUsingKeys() {
 
-        redis.set("key1{k}", "ohmytext");
-        redis.set("key2{k}", "mynewtext");
+        redis.set(KEY_1, "ohmytext");
+        redis.set(KEY_2, "mynewtext");
 
-        StringMatchResult matchResult = redis.stralgoLcs(StrAlgoArgs.Builder.keys("key1{k}", "key2{k}"));
+        StringMatchResult matchResult = redis.stralgoLcs(StrAlgoArgs.Builder.keys(KEY_1, KEY_2));
         assertThat(matchResult.getMatchString()).isEqualTo("mytext");
 
         // STRALGO LCS STRINGS a b
@@ -336,8 +391,7 @@ public class StringCommandIntegrationTests extends TestSupport {
     @EnabledOnCommand("STRALGO")
     void strAlgoJustLen() {
 
-        StringMatchResult matchResult = redis.stralgoLcs(StrAlgoArgs.Builder
-                .strings("ohmytext", "mynewtext").justLen());
+        StringMatchResult matchResult = redis.stralgoLcs(StrAlgoArgs.Builder.strings("ohmytext", "mynewtext").justLen());
 
         assertThat(matchResult.getLen()).isEqualTo(6);
     }
@@ -346,8 +400,7 @@ public class StringCommandIntegrationTests extends TestSupport {
     @EnabledOnCommand("STRALGO")
     void strAlgoWithMinMatchLen() {
 
-        StringMatchResult matchResult = redis.stralgoLcs(StrAlgoArgs.Builder
-                .strings("ohmytext", "mynewtext").minMatchLen(4));
+        StringMatchResult matchResult = redis.stralgoLcs(StrAlgoArgs.Builder.strings("ohmytext", "mynewtext").minMatchLen(4));
 
         assertThat(matchResult.getMatchString()).isEqualTo("mytext");
     }
@@ -357,8 +410,8 @@ public class StringCommandIntegrationTests extends TestSupport {
     void strAlgoWithIdx() {
 
         // STRALGO LCS STRINGS ohmytext mynewtext IDX MINMATCHLEN 4 WITHMATCHLEN
-        StringMatchResult matchResult = redis.stralgoLcs(StrAlgoArgs.Builder
-                .strings("ohmytext", "mynewtext").minMatchLen(4).withIdx().withMatchLen());
+        StringMatchResult matchResult = redis
+                .stralgoLcs(StrAlgoArgs.Builder.strings("ohmytext", "mynewtext").minMatchLen(4).withIdx().withMatchLen());
 
         assertThat(matchResult.getMatches()).hasSize(1);
         assertThat(matchResult.getMatches().get(0).getMatchLen()).isEqualTo(4);
@@ -372,4 +425,109 @@ public class StringCommandIntegrationTests extends TestSupport {
         assertThat(b.getEnd()).isEqualTo(8);
         assertThat(matchResult.getLen()).isEqualTo(6);
     }
+
+    @Test
+    @EnabledOnCommand("LCS")
+    void lcs() {
+        redis.set(KEY_1, "ohmytext");
+        redis.set(KEY_2, "mynewtext");
+
+        // > LCS key1 key2
+        StringMatchResult matchResult = redis.lcs(LcsArgs.Builder.keys(KEY_1, KEY_2));
+        assertThat(matchResult.getMatchString()).isEqualTo("mytext");
+        assertThat(matchResult.getMatches().size()).isEqualTo(0);
+        assertThat(matchResult.getLen()).isEqualTo(0);
+
+    }
+
+    @Test
+    @EnabledOnCommand("LCS")
+    void lcsNonExistantKeys() {
+
+        // > LCS a b IDX MINMATCHLEN 4 WITHMATCHLEN
+        // Keys don't exist.
+        StringMatchResult matchResult = redis.lcs(LcsArgs.Builder.keys("a{k}", "b{k}").minMatchLen(4).withMatchLen());
+        assertThat(matchResult.getMatchString()).isNullOrEmpty();
+        assertThat(matchResult.getMatches()).isNullOrEmpty();
+        assertThat(matchResult.getLen()).isEqualTo(0);
+    }
+
+    @Test
+    @EnabledOnCommand("LCS")
+    void lcsJustLen() {
+        redis.set(KEY_1, "ohmytext");
+        redis.set(KEY_2, "mynewtext");
+
+        // > LCS key1 key2 LEN
+        StringMatchResult matchResult = redis.lcs(LcsArgs.Builder.keys(KEY_1, KEY_2).justLen());
+        assertThat(matchResult.getLen()).isEqualTo(6);
+        assertThat(matchResult.getMatchString()).isNullOrEmpty();
+        assertThat(matchResult.getMatches()).isNullOrEmpty();
+    }
+
+    @Test
+    @EnabledOnCommand("LCS")
+    void lcsIdx() {
+        redis.set(KEY_1, "ohmytext");
+        redis.set(KEY_2, "mynewtext");
+
+        // > LCS key1 key2 IDX
+        StringMatchResult matchResult = redis.lcs(LcsArgs.Builder.keys(KEY_1, KEY_2).withIdx());
+
+        assertThat(matchResult.getMatches().size()).isEqualTo(2);
+        assertThat(matchResult.getMatches().get(0).getA().getStart()).isEqualTo(4);
+        assertThat(matchResult.getMatches().get(0).getA().getEnd()).isEqualTo(7);
+        assertThat(matchResult.getMatches().get(0).getB().getStart()).isEqualTo(5);
+        assertThat(matchResult.getMatches().get(0).getB().getEnd()).isEqualTo(8);
+
+        assertThat(matchResult.getMatches().get(1).getA().getStart()).isEqualTo(2);
+        assertThat(matchResult.getMatches().get(1).getA().getEnd()).isEqualTo(3);
+        assertThat(matchResult.getMatches().get(1).getB().getStart()).isEqualTo(0);
+        assertThat(matchResult.getMatches().get(1).getB().getEnd()).isEqualTo(1);
+
+        assertThat(matchResult.getLen()).isEqualTo(6);
+
+        assertThat(matchResult.getMatchString()).isNullOrEmpty();
+    }
+
+    @Test
+    @EnabledOnCommand("LCS")
+    void lcsWithMinMatchLen() {
+        redis.set(KEY_1, "ohmytext");
+        redis.set(KEY_2, "mynewtext");
+
+        // > LCS key1 key2 IDX MINMATCHLEN 4
+        StringMatchResult matchResult = redis.lcs(LcsArgs.Builder.keys(KEY_1, KEY_2).withIdx().minMatchLen(4));
+
+        assertThat(matchResult.getMatches().get(0).getA().getStart()).isEqualTo(4);
+        assertThat(matchResult.getMatches().get(0).getA().getEnd()).isEqualTo(7);
+        assertThat(matchResult.getMatches().get(0).getB().getStart()).isEqualTo(5);
+        assertThat(matchResult.getMatches().get(0).getB().getEnd()).isEqualTo(8);
+
+        assertThat(matchResult.getLen()).isEqualTo(6);
+
+        assertThat(matchResult.getMatchString()).isNullOrEmpty();
+    }
+
+    @Test
+    @EnabledOnCommand("LCS")
+    void lcsMinMatchLenIdxMatchLen() {
+        redis.set(KEY_1, "ohmytext");
+        redis.set(KEY_2, "mynewtext");
+
+        // > LCS key1 key2 IDX MINMATCHLEN 4 WITHMATCHLEN
+        StringMatchResult matchResult = redis.lcs(LcsArgs.Builder.keys(KEY_1, KEY_2).minMatchLen(4).withMatchLen().withIdx());
+
+        assertThat(matchResult.getMatches().get(0).getA().getStart()).isEqualTo(4);
+        assertThat(matchResult.getMatches().get(0).getA().getEnd()).isEqualTo(7);
+        assertThat(matchResult.getMatches().get(0).getB().getStart()).isEqualTo(5);
+        assertThat(matchResult.getMatches().get(0).getB().getEnd()).isEqualTo(8);
+
+        assertThat(matchResult.getMatches().get(0).getMatchLen()).isEqualTo(4);
+
+        assertThat(matchResult.getLen()).isEqualTo(6);
+
+        assertThat(matchResult.getMatchString()).isNullOrEmpty();
+    }
+
 }

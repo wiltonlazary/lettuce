@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -16,6 +20,7 @@
 
 package io.lettuce.core.sentinel.api.coroutines
 
+import io.lettuce.core.ClientListArgs
 import io.lettuce.core.ExperimentalLettuceCoroutinesApi
 import io.lettuce.core.KillArgs
 import io.lettuce.core.output.CommandOutput
@@ -67,6 +72,9 @@ internal class RedisSentinelCoroutinesCommandsImpl<K : Any, V : Any>(internal va
 
     override suspend fun clientGetname(): K? = ops.clientGetname().awaitFirstOrNull()
 
+    override suspend fun clientSetinfo(key: String, value: String): String? =
+        ops.clientSetinfo(key, value).awaitFirstOrNull()
+
     override suspend fun clientSetname(name: K): String = ops.clientSetname(name).awaitLast()
 
     override suspend fun clientKill(addr: String): String = ops.clientKill(addr).awaitLast()
@@ -77,6 +85,10 @@ internal class RedisSentinelCoroutinesCommandsImpl<K : Any, V : Any>(internal va
 
     override suspend fun clientList(): String = ops.clientList().awaitLast()
 
+    override suspend fun clientList(clientListArgs: ClientListArgs): String? = ops.clientList(clientListArgs).awaitLast()
+
+    override suspend fun clientInfo(): String? = ops.clientInfo().awaitFirstOrNull()
+
     override suspend fun info(): String = ops.info().awaitLast()
 
     override suspend fun info(section: String): String = ops.info(section).awaitLast()
@@ -86,8 +98,6 @@ internal class RedisSentinelCoroutinesCommandsImpl<K : Any, V : Any>(internal va
     override fun <T : Any> dispatch(type: ProtocolKeyword, output: CommandOutput<K, V, T>): Flow<T> = ops.dispatch<T>(type, output).asFlow()
 
     override fun <T : Any> dispatch(type: ProtocolKeyword, output: CommandOutput<K, V, T>, args: CommandArgs<K, V>): Flow<T> = ops.dispatch<T>(type, output, args).asFlow()
-
-    override fun isOpen(): Boolean = ops.isOpen
 
 }
 

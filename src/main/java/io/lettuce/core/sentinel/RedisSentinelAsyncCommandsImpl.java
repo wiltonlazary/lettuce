@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -19,6 +23,7 @@ import java.net.SocketAddress;
 import java.util.List;
 import java.util.Map;
 
+import io.lettuce.core.ClientListArgs;
 import io.lettuce.core.KillArgs;
 import io.lettuce.core.RedisFuture;
 import io.lettuce.core.api.StatefulConnection;
@@ -118,6 +123,11 @@ public class RedisSentinelAsyncCommandsImpl<K, V> implements RedisSentinelAsyncC
     }
 
     @Override
+    public RedisFuture<String> clientSetinfo(String key, String value) {
+        return dispatch(commandBuilder.clientSetinfo(key, value));
+    }
+
+    @Override
     public RedisFuture<String> clientKill(String addr) {
         return dispatch(commandBuilder.clientKill(addr));
     }
@@ -135,6 +145,16 @@ public class RedisSentinelAsyncCommandsImpl<K, V> implements RedisSentinelAsyncC
     @Override
     public RedisFuture<String> clientList() {
         return dispatch(commandBuilder.clientList());
+    }
+
+    @Override
+    public RedisFuture<String> clientList(ClientListArgs clientListArgs) {
+        return dispatch(commandBuilder.clientList(clientListArgs));
+    }
+
+    @Override
+    public RedisFuture<String> clientInfo() {
+        return dispatch(commandBuilder.clientInfo());
     }
 
     @Override
@@ -174,15 +194,6 @@ public class RedisSentinelAsyncCommandsImpl<K, V> implements RedisSentinelAsyncC
             return (AsyncCommand<K, V, T>) dispatched;
         }
         return asyncCommand;
-    }
-
-    public void close() {
-        connection.close();
-    }
-
-    @Override
-    public boolean isOpen() {
-        return connection.isOpen();
     }
 
     @Override

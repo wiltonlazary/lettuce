@@ -1,28 +1,19 @@
-/*
- * Copyright 2018-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.cluster;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static io.lettuce.TestTags.INTEGRATION_TEST;
+import static io.lettuce.core.codec.StringCodec.UTF8;
+import static org.assertj.core.api.Assertions.*;
 
 import java.time.Duration;
 import java.util.concurrent.ExecutionException;
 
 import javax.inject.Inject;
 
+import io.lettuce.core.ClientOptions;
+import io.lettuce.core.RedisConnectionException;
+import io.lettuce.core.protocol.ProtocolVersion;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -37,6 +28,7 @@ import io.lettuce.test.LettuceExtension;
 /**
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 class ClusterClientOptionsIntegrationTests extends TestSupport {
 
@@ -55,8 +47,8 @@ class ClusterClientOptionsIntegrationTests extends TestSupport {
     @Test
     void shouldApplyTimeoutOptionsToClusterConnection() throws InterruptedException {
 
-        clusterClient.setOptions(ClusterClientOptions.builder().timeoutOptions(TimeoutOptions.enabled(Duration.ofMillis(100)))
-                .build());
+        clusterClient.setOptions(
+                ClusterClientOptions.builder().timeoutOptions(TimeoutOptions.enabled(Duration.ofMillis(100))).build());
 
         try (StatefulRedisClusterConnection<String, String> connection = clusterClient.connect()) {
 
@@ -75,8 +67,8 @@ class ClusterClientOptionsIntegrationTests extends TestSupport {
     @Test
     void shouldApplyTimeoutOptionsToPubSubClusterConnection() throws InterruptedException {
 
-        clusterClient.setOptions(ClusterClientOptions.builder().timeoutOptions(TimeoutOptions.enabled(Duration.ofMillis(100)))
-                .build());
+        clusterClient.setOptions(
+                ClusterClientOptions.builder().timeoutOptions(TimeoutOptions.enabled(Duration.ofMillis(100))).build());
 
         try (StatefulRedisClusterPubSubConnection<String, String> connection = clusterClient.connectPubSub()) {
             connection.setTimeout(Duration.ofMillis(100));
@@ -91,4 +83,24 @@ class ClusterClientOptionsIntegrationTests extends TestSupport {
 
         Thread.sleep(300);
     }
+
+    @Test
+    void connectPubSubAsyncReauthNotSupportedWithRESP2() {
+
+        ClientOptions.ReauthenticateBehavior reauth = clusterClient.getClusterClientOptions().getReauthenticateBehaviour();
+        ProtocolVersion protocolVersion = clusterClient.getClusterClientOptions().getConfiguredProtocolVersion();
+
+        try {
+            clusterClient.setOptions(clusterClient.getClusterClientOptions().mutate().protocolVersion(ProtocolVersion.RESP2)
+                    .reauthenticateBehavior(ClientOptions.ReauthenticateBehavior.ON_NEW_CREDENTIALS).build());
+            assertThatThrownBy(() -> clusterClient.connectPubSub(UTF8)).isInstanceOf(RedisConnectionException.class);
+
+        } finally {
+
+            clusterClient.setOptions(clusterClient.getClusterClientOptions().mutate().protocolVersion(protocolVersion)
+                    .reauthenticateBehavior(reauth).build());
+        }
+
+    }
+
 }

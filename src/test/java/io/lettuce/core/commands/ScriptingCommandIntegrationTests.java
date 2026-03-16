@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core.commands;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static io.lettuce.core.ScriptOutputType.*;
 import static io.lettuce.core.ScriptOutputType.BOOLEAN;
 import static io.lettuce.core.ScriptOutputType.INTEGER;
@@ -22,12 +27,12 @@ import static org.assertj.core.api.Assertions.*;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import javax.inject.Inject;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -37,7 +42,6 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.RedisException;
 import io.lettuce.core.RedisNoScriptException;
 import io.lettuce.core.TestSupport;
-import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.test.LettuceExtension;
 import io.lettuce.test.Wait;
@@ -50,6 +54,7 @@ import io.lettuce.test.condition.EnabledOnCommand;
  * @author Mark Paluch
  * @author dengliming
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class ScriptingCommandIntegrationTests extends TestSupport {
@@ -132,7 +137,7 @@ public class ScriptingCommandIntegrationTests extends TestSupport {
     @EnabledOnCommand("EVAL_RO") // Redis 7.0
     void evalReadOnly() {
         String[] keys = new String[] { "key1" };
-        assertThat((String) redis.evalReadOnly("return KEYS[1]".getBytes(), STATUS, keys, "a")).isEqualTo("key1");
+        assertThat((String) redis.evalReadOnly("return KEYS[1]", STATUS, keys, "a")).isEqualTo("key1");
     }
 
     @Test
@@ -177,6 +182,7 @@ public class ScriptingCommandIntegrationTests extends TestSupport {
     void evalshaReadOnly() {
         redis.scriptFlush();
         redis.set("foo", "bar");
+
         String digest = redis.scriptLoad("return redis.call('get','foo')");
         String[] keys = new String[0];
         assertThat((String) redis.evalshaReadOnly(digest, STATUS, keys)).isEqualTo("bar");
@@ -198,16 +204,6 @@ public class ScriptingCommandIntegrationTests extends TestSupport {
 
         assertThat(redis.scriptFlush()).isEqualTo("OK");
         assertThat(redis.scriptExists(digest1, digest2)).isEqualTo(list(false, false));
-
-        redis.configSet("lua-time-limit", "10");
-        StatefulRedisConnection<String, String> connection = client.connect();
-        try {
-            connection.async().eval("while true do end", STATUS, new String[0]).await(100, TimeUnit.MILLISECONDS);
-
-            assertThat(redis.scriptKill()).isEqualTo("OK");
-        } finally {
-            connection.close();
-        }
     }
 
     @Test

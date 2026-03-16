@@ -1,20 +1,6 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.*;
@@ -28,6 +14,7 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import javax.inject.Inject;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -41,11 +28,14 @@ import io.lettuce.test.LettuceExtension;
  * @author Will Glozer
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 class CustomCodecIntegrationTests extends TestSupport {
 
     private final SecretKeySpec secretKey = new SecretKeySpec("1234567890123456".getBytes(), "AES");
+
     private final IvParameterSpec iv = new IvParameterSpec("1234567890123456".getBytes());
+
     // Creates a CryptoCipher instance with the transformation and properties.
     private final String transform = "AES/CBC/PKCS5Padding";
 
@@ -140,7 +130,7 @@ class CustomCodecIntegrationTests extends TestSupport {
         connection.set(key.getBytes(), null);
         assertThat(connection.get(key.getBytes())).isEqualTo(new byte[0]);
 
-        List<byte[]> keys = connection.keys(key.getBytes());
+        List<byte[]> keys = connection.keys(key);
         assertThat(keys).contains(key.getBytes());
 
         connection.getStatefulConnection().close();
@@ -156,7 +146,7 @@ class CustomCodecIntegrationTests extends TestSupport {
 
         connection.set(wrap, wrap);
 
-        List<ByteBuffer> keys = connection.keys(wrap);
+        List<ByteBuffer> keys = connection.keys(value);
         assertThat(keys).hasSize(1);
         ByteBuffer byteBuffer = keys.get(0);
         byte[] bytes = new byte[byteBuffer.remaining()];
@@ -220,9 +210,11 @@ class CustomCodecIntegrationTests extends TestSupport {
                 return null;
             }
         }
+
     }
 
     static class Person implements Serializable {
 
     }
+
 }

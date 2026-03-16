@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -18,7 +22,6 @@ package io.lettuce.core.resource;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
-import reactor.core.scheduler.Schedulers;
 import io.lettuce.core.event.DefaultEventBus;
 import io.lettuce.core.event.DefaultEventPublisherOptions;
 import io.lettuce.core.event.EventBus;
@@ -35,7 +38,12 @@ import io.lettuce.core.metrics.DefaultCommandLatencyCollectorOptions;
 import io.lettuce.core.metrics.MetricCollector;
 import io.lettuce.core.resource.Delay.StatefulDelay;
 import io.lettuce.core.tracing.Tracing;
+import io.netty.channel.socket.SocketChannel;
 import io.netty.resolver.AddressResolverGroup;
+import io.netty.resolver.dns.DefaultDnsCache;
+import io.netty.resolver.dns.DefaultDnsCnameCache;
+import io.netty.resolver.dns.DnsAddressResolverGroup;
+import io.netty.resolver.dns.DnsNameResolverBuilder;
 import io.netty.util.HashedWheelTimer;
 import io.netty.util.Timer;
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
@@ -47,6 +55,7 @@ import io.netty.util.concurrent.PromiseCombiner;
 import io.netty.util.internal.SystemPropertyUtil;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
+import reactor.core.scheduler.Schedulers;
 
 /**
  * Default instance of the client resources.
@@ -75,6 +84,8 @@ import io.netty.util.internal.logging.InternalLoggerFactory;
  *
  * @author Mark Paluch
  * @author Yohei Ueki
+ * @author Euiyoung Nam
+ * @author Hari Mani
  * @since 3.4
  */
 public class DefaultClientResources implements ClientResources {
@@ -108,8 +119,10 @@ public class DefaultClientResources implements ClientResources {
     /**
      * Default {@link AddressResolverGroup}.
      */
-    public static final AddressResolverGroup<?> DEFAULT_ADDRESS_RESOLVER_GROUP = AddressResolverGroupProvider
-            .addressResolverGroup();
+    public static final AddressResolverGroup<?> DEFAULT_ADDRESS_RESOLVER_GROUP = new DnsAddressResolverGroup(
+            new DnsNameResolverBuilder().datagramChannelType(Transports.datagramChannelClass())
+                    .socketChannelType(Transports.socketChannelClass().asSubclass(SocketChannel.class))
+                    .cnameCache(new DefaultDnsCnameCache()).resolveCache(new DefaultDnsCache()));
 
     static {
 
@@ -130,8 +143,6 @@ public class DefaultClientResources implements ClientResources {
     private final boolean sharedCommandLatencyRecorder;
 
     private final EventPublisherOptions commandLatencyPublisherOptions;
-
-    private final DnsResolver dnsResolver;
 
     private final EventBus eventBus;
 
@@ -245,14 +256,8 @@ public class DefaultClientResources implements ClientResources {
             metricEventPublisher = null;
         }
 
-        if (builder.dnsResolver == null) {
-            dnsResolver = DnsResolvers.UNRESOLVED;
-        } else {
-            dnsResolver = builder.dnsResolver;
-        }
-
         if (builder.socketAddressResolver == null) {
-            socketAddressResolver = SocketAddressResolver.create(dnsResolver);
+            socketAddressResolver = SocketAddressResolver.create(DnsResolvers.UNRESOLVED);
         } else {
             socketAddressResolver = builder.socketAddressResolver;
         }
@@ -298,8 +303,6 @@ public class DefaultClientResources implements ClientResources {
         private boolean sharedCommandLatencyCollector;
 
         private int computationThreadPoolSize = DEFAULT_COMPUTATION_THREADS;
-
-        private DnsResolver dnsResolver = DnsResolvers.UNRESOLVED;
 
         private EventBus eventBus;
 
@@ -386,8 +389,8 @@ public class DefaultClientResources implements ClientResources {
         }
 
         /**
-         * Sets the {@link CommandLatencyCollectorOptions} that can that can be used across different instances of the
-         * RedisClient. The options are only effective if no {@code commandLatencyCollector} is provided.
+         * Sets the {@link CommandLatencyCollectorOptions} that can be used across different instances of the RedisClient. The
+         * options are only effective if no {@code commandLatencyCollector} is provided.
          *
          * @param commandLatencyCollectorOptions the command latency collector options, must not be {@code null}.
          * @return {@code this} {@link Builder}.
@@ -405,7 +408,7 @@ public class DefaultClientResources implements ClientResources {
         }
 
         /**
-         * Sets the {@link CommandLatencyRecorder} that can that can be used across different instances of the RedisClient.
+         * Sets the {@link CommandLatencyRecorder} that can be used across different instances of the RedisClient.
          *
          * @param commandLatencyRecorder the command latency recorder, must not be {@code null}.
          * @return {@code this} {@link Builder}.
@@ -437,24 +440,7 @@ public class DefaultClientResources implements ClientResources {
         }
 
         /**
-         * Sets the {@link DnsResolver} that is used to resolve hostnames to {@link java.net.InetAddress}. Defaults to
-         * {@link DnsResolvers#JVM_DEFAULT}
-         *
-         * @param dnsResolver the DNS resolver, must not be {@code null}.
-         * @return {@code this} {@link Builder}.
-         * @since 4.3
-         */
-        @Override
-        public Builder dnsResolver(DnsResolver dnsResolver) {
-
-            LettuceAssert.notNull(dnsResolver, "DnsResolver must not be null");
-
-            this.dnsResolver = dnsResolver;
-            return this;
-        }
-
-        /**
-         * Sets the {@link EventBus} that can that can be used across different instances of the RedisClient.
+         * Sets the {@link EventBus} that can be used across different instances of the RedisClient.
          *
          * @param eventBus the event bus, must not be {@code null}.
          * @return {@code this} {@link Builder}.
@@ -599,10 +585,10 @@ public class DefaultClientResources implements ClientResources {
          * @param threadFactoryProvider a provider to obtain a {@link java.util.concurrent.ThreadFactory} for a
          *        {@code poolName}, must not be {@code null}.
          * @return {@code this} {@link ClientResources.Builder}.
-         * @since 6.1.1
          * @see #eventExecutorGroup(EventExecutorGroup)
          * @see #eventLoopGroupProvider(EventLoopGroupProvider)
          * @see #timer(Timer)
+         * @since 6.1.1
          */
         @Override
         public ClientResources.Builder threadFactoryProvider(ThreadFactoryProvider threadFactoryProvider) {
@@ -672,13 +658,12 @@ public class DefaultClientResources implements ClientResources {
      * <p>
      * Note: The resulting {@link DefaultClientResources} retains shared state for {@link Timer},
      * {@link CommandLatencyRecorder}, {@link EventExecutorGroup}, and {@link EventLoopGroupProvider} if these are left
-     * unchanged. Thus you need only to shut down the last created {@link ClientResources} instances. Shutdown affects any
+     * unchanged. Thus, you need only to shut down the last created {@link ClientResources} instances. Shutdown affects any
      * previously created {@link ClientResources}.
      * </p>
      *
      * @return a {@link DefaultClientResources.Builder} to create new {@link DefaultClientResources} whose settings are
      *         replicated from the current {@link DefaultClientResources}.
-     *
      * @since 5.1
      */
     @Override
@@ -687,11 +672,11 @@ public class DefaultClientResources implements ClientResources {
         Builder builder = new Builder();
 
         builder.afterBuild(() -> this.shutdownCheck = false).commandLatencyRecorder(commandLatencyRecorder())
-                .commandLatencyPublisherOptions(commandLatencyPublisherOptions()).dnsResolver(dnsResolver())
-                .eventBus(eventBus()).eventExecutorGroup(eventExecutorGroup()).reconnectDelay(reconnectDelay)
+                .commandLatencyPublisherOptions(commandLatencyPublisherOptions()).eventBus(eventBus())
+                .eventExecutorGroup(eventExecutorGroup()).reconnectDelay(reconnectDelay)
                 .socketAddressResolver(socketAddressResolver()).nettyCustomizer(nettyCustomizer())
-                .threadFactoryProvider(threadFactoryProvider).timer(timer())
-                .tracing(tracing()).addressResolverGroup(addressResolverGroup());
+                .threadFactoryProvider(threadFactoryProvider).timer(timer()).tracing(tracing())
+                .addressResolverGroup(addressResolverGroup());
 
         builder.sharedCommandLatencyCollector = sharedEventLoopGroupProvider;
         builder.sharedEventExecutor = sharedEventExecutor;
@@ -778,11 +763,6 @@ public class DefaultClientResources implements ClientResources {
     @Override
     public int computationThreadPoolSize() {
         return LettuceLists.newList(eventExecutorGroup.iterator()).size();
-    }
-
-    @Override
-    public DnsResolver dnsResolver() {
-        return dnsResolver;
     }
 
     @Override

@@ -1,7 +1,11 @@
 /*
- * Copyright 2016-2022 the original author or authors.
+ * Copyright 2016-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core.sentinel;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.*;
 
 import java.util.regex.Matcher;
@@ -24,6 +29,7 @@ import javax.inject.Inject;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -41,11 +47,14 @@ import io.lettuce.test.settings.TestSettings;
  *
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 public class SentinelServerCommandIntegrationTests extends TestSupport {
 
     private final RedisClient redisClient;
+
     private StatefulRedisSentinelConnection<String, String> connection;
+
     private RedisSentinelCommands<String, String> sentinel;
 
     @Inject
@@ -71,10 +80,18 @@ public class SentinelServerCommandIntegrationTests extends TestSupport {
     }
 
     @Test
-    public void clientGetSetname() {
+    public void clientGetNameReturnsNullWhenNotSet() {
         assertThat(sentinel.clientGetname()).isNull();
+    }
+
+    @Test
+    public void clientSetNameWithNonEmptyStringSetsNameAndReturnsOk() {
         assertThat(sentinel.clientSetname("test")).isEqualTo("OK");
         assertThat(sentinel.clientGetname()).isEqualTo("test");
+    }
+
+    @Test
+    public void clientSetNameWithEmptyStringClearsNameAndReturnsOk() {
         assertThat(sentinel.clientSetname("")).isEqualTo("OK");
         assertThat(sentinel.clientGetname()).isNull();
     }
@@ -127,4 +144,5 @@ public class SentinelServerCommandIntegrationTests extends TestSupport {
         assertThat(sentinel.info().contains("redis_version")).isTrue();
         assertThat(sentinel.info("server").contains("redis_version")).isTrue();
     }
+
 }

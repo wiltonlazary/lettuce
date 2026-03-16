@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -24,6 +28,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -59,6 +65,7 @@ import io.netty.util.internal.logging.InternalLoggerFactory;
  * @param <K> Key type.
  * @param <V> Value type.
  * @author Mark Paluch
+ * @author Tihomir Mateev
  * @since 3.0
  */
 @SuppressWarnings({ "unchecked", "rawtypes" })
@@ -67,8 +74,7 @@ class PooledClusterConnectionProvider<K, V>
 
     private static final InternalLogger logger = InternalLoggerFactory.getInstance(PooledClusterConnectionProvider.class);
 
-    // Contains NodeId-identified and HostAndPort-identified connections.
-    private final Object stateLock = new Object();
+    private final Lock stateLock = new ReentrantLock();
 
     private final boolean debugEnabled = logger.isDebugEnabled();
 
@@ -149,41 +155,64 @@ class PooledClusterConnectionProvider<K, V>
         return getWriteConnection(slot).toCompletableFuture();
     }
 
+    @Override
+    public CompletableFuture<StatefulRedisConnection<K, V>> getRandomConnectionAsync(ConnectionIntent connectionIntent) {
+
+        if (debugEnabled) {
+            logger.debug("getConnection(" + connectionIntent + ")");
+        }
+
+        // Choose a random master shard first to ensure even distribution across partitions,
+        // then delegate to the slot-based selection to reuse ReadFrom/intent logic and caching.
+        List<RedisClusterNode> masters = partitions.stream()
+                .filter(n -> n.is(RedisClusterNode.NodeFlag.UPSTREAM) && !n.hasNoSlots()).collect(Collectors.toList());
+
+        if (masters.isEmpty()) {
+            int slot = ThreadLocalRandom.current().nextInt(SlotHash.SLOT_COUNT);
+            return getConnectionAsync(connectionIntent, slot);
+        }
+
+        RedisClusterNode master = masters.get(ThreadLocalRandom.current().nextInt(masters.size()));
+        List<Integer> masterSlots = master.getSlots();
+        int slot = masterSlots.get(ThreadLocalRandom.current().nextInt(masterSlots.size()));
+
+        return getConnectionAsync(connectionIntent, slot);
+    }
+
     private CompletableFuture<StatefulRedisConnection<K, V>> getWriteConnection(int slot) {
 
-        CompletableFuture<StatefulRedisConnection<K, V>> writer;// avoid races when reconfiguring partitions.
-        synchronized (stateLock) {
-            writer = writers[slot];
+        CompletableFuture<StatefulRedisConnection<K, V>> writer = writers[slot];
+        if (writer != null) {
+            return writer;
         }
 
-        if (writer == null) {
-            RedisClusterNode master = partitions.getMasterBySlot(slot);
-            if (master == null) {
-                clusterEventListener.onUncoveredSlot(slot);
-                return Futures.failed(new PartitionSelectorException("Cannot determine a partition for slot " + slot + ".",
-                        partitions.clone()));
+        RedisClusterNode master = partitions.getMasterBySlot(slot);
+        if (master == null) {
+            clusterEventListener.onUncoveredSlot(slot);
+            return Futures.failed(
+                    new PartitionSelectorException("Cannot determine a partition for slot " + slot + ".", partitions.clone()));
+        }
+
+        // Use always host and port for slot-oriented operations. We don't want to get reconnected on a different
+        // host because the nodeId can be handled by a different host.
+        RedisURI uri = master.getUri();
+        ConnectionKey key = new ConnectionKey(ConnectionIntent.WRITE, uri.getHost(), uri.getPort());
+
+        ConnectionFuture<StatefulRedisConnection<K, V>> future = getConnectionAsync(key);
+
+        return future.thenApply(connection -> {
+
+            stateLock.lock();
+            try {
+                if (writers[slot] == null) {
+                    writers[slot] = CompletableFuture.completedFuture(connection);
+                }
+            } finally {
+                stateLock.unlock();
             }
 
-            // Use always host and port for slot-oriented operations. We don't want to get reconnected on a different
-            // host because the nodeId can be handled by a different host.
-            RedisURI uri = master.getUri();
-            ConnectionKey key = new ConnectionKey(ConnectionIntent.WRITE, uri.getHost(), uri.getPort());
-
-            ConnectionFuture<StatefulRedisConnection<K, V>> future = getConnectionAsync(key);
-
-            return future.thenApply(connection -> {
-
-                synchronized (stateLock) {
-                    if (writers[slot] == null) {
-                        writers[slot] = CompletableFuture.completedFuture(connection);
-                    }
-                }
-
-                return connection;
-            }).toCompletableFuture();
-        }
-
-        return writer;
+            return connection;
+        }).toCompletableFuture();
     }
 
     private CompletableFuture<StatefulRedisConnection<K, V>> getReadConnection(int slot) {
@@ -192,8 +221,11 @@ class PooledClusterConnectionProvider<K, V>
 
         boolean cached = true;
 
-        synchronized (stateLock) {
+        stateLock.lock();
+        try {
             readerCandidates = readers[slot];
+        } finally {
+            stateLock.unlock();
         }
 
         if (readerCandidates == null) {
@@ -289,8 +321,12 @@ class PooledClusterConnectionProvider<K, V>
             for (int i = 0; i < toCache.length; i++) {
                 toCache[i] = CompletableFuture.completedFuture(statefulRedisConnections[i]);
             }
-            synchronized (stateLock) {
+
+            stateLock.lock();
+            try {
                 readers[slot] = toCache;
+            } finally {
+                stateLock.unlock();
             }
 
             if (!orderSensitive) {
@@ -513,11 +549,6 @@ class PooledClusterConnectionProvider<K, V>
         return connectionProvider.close();
     }
 
-    @Override
-    public void reset() {
-        connectionProvider.forEach(StatefulRedisConnection::reset);
-    }
-
     /**
      * Synchronize on {@code stateLock} to initiate a happens-before relation and clear the thread caches of other threads.
      *
@@ -528,12 +559,15 @@ class PooledClusterConnectionProvider<K, V>
 
         boolean reconfigurePartitions = false;
 
-        synchronized (stateLock) {
+        stateLock.lock();
+        try {
             if (this.partitions != null) {
                 reconfigurePartitions = true;
             }
             this.partitions = partitions;
             this.connectionFactory.setPartitions(partitions);
+        } finally {
+            stateLock.unlock();
         }
 
         if (reconfigurePartitions) {
@@ -597,8 +631,11 @@ class PooledClusterConnectionProvider<K, V>
     @Override
     public void setAutoFlushCommands(boolean autoFlush) {
 
-        synchronized (stateLock) {
+        stateLock.lock();
+        try {
             this.autoFlushCommands = autoFlush;
+        } finally {
+            stateLock.unlock();
         }
 
         connectionProvider.forEach(connection -> connection.setAutoFlushCommands(autoFlush));
@@ -612,9 +649,12 @@ class PooledClusterConnectionProvider<K, V>
     @Override
     public void setReadFrom(ReadFrom readFrom) {
 
-        synchronized (stateLock) {
+        stateLock.lock();
+        try {
             this.readFrom = readFrom;
             Arrays.fill(readers, null);
+        } finally {
+            stateLock.unlock();
         }
     }
 
@@ -624,7 +664,6 @@ class PooledClusterConnectionProvider<K, V>
     }
 
     /**
-     *
      * @return number of connections.
      */
     long getConnectionCount() {
@@ -639,9 +678,12 @@ class PooledClusterConnectionProvider<K, V>
      */
     private void resetFastConnectionCache() {
 
-        synchronized (stateLock) {
+        stateLock.lock();
+        try {
             Arrays.fill(writers, null);
             Arrays.fill(readers, null);
+        } finally {
+            stateLock.unlock();
         }
     }
 
@@ -715,9 +757,12 @@ class PooledClusterConnectionProvider<K, V>
 
             RedisClusterNode actualNode = targetNode;
             connection = connection.thenApply(c -> {
-                synchronized (stateLock) {
+                stateLock.lock();
+                try {
                     c.setAutoFlushCommands(autoFlushCommands);
                     c.addListener(message -> onPushMessage(actualNode, message));
+                } finally {
+                    stateLock.unlock();
                 }
                 return c;
             });

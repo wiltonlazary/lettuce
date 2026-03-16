@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -20,6 +24,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Proxy;
 import java.util.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * Abstract base class for invocation handlers.
@@ -157,6 +163,8 @@ public abstract class AbstractInvocationHandler implements InvocationHandler {
 
         private static final WeakHashMap<Class<?>, MethodTranslator> TRANSLATOR_MAP = new WeakHashMap<>(32);
 
+        private static final Lock lock = new ReentrantLock();
+
         private final Map<Method, Method> map;
 
         private MethodTranslator(Class<?> delegate, Class<?>... methodSources) {
@@ -166,8 +174,11 @@ public abstract class AbstractInvocationHandler implements InvocationHandler {
 
         public static MethodTranslator of(Class<?> delegate, Class<?>... methodSources) {
 
-            synchronized (TRANSLATOR_MAP) {
+            lock.lock();
+            try {
                 return TRANSLATOR_MAP.computeIfAbsent(delegate, key -> new MethodTranslator(key, methodSources));
+            } finally {
+                lock.unlock();
             }
         }
 

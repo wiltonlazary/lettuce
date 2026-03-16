@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -32,6 +36,8 @@ public class KeyValueOutput<K, V> extends CommandOutput<K, V, KeyValue<K, V>> {
 
     private K key;
 
+    private boolean hasKey;
+
     public KeyValueOutput(RedisCodec<K, V> codec) {
         super(codec, null);
     }
@@ -40,8 +46,9 @@ public class KeyValueOutput<K, V> extends CommandOutput<K, V, KeyValue<K, V>> {
     public void set(ByteBuffer bytes) {
 
         if (bytes != null) {
-            if (key == null) {
+            if (!hasKey) {
                 key = codec.decodeKey(bytes);
+                hasKey = true;
             } else {
                 V value = codec.decodeValue(bytes);
                 output = KeyValue.fromNullable(key, value);

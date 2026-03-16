@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,7 +19,9 @@
  */
 package io.lettuce.core.cluster.topology;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
+import static org.junit.jupiter.api.Timeout.ThreadMode.SEPARATE_THREAD;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.mockito.Mockito.anyLong;
@@ -35,7 +41,9 @@ import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.TimeUnit;
 
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -67,6 +75,7 @@ import io.netty.util.concurrent.EventExecutorGroup;
  * @author Mark Paluch
  * @author Christian Weitendorf
  */
+@Tag(UNIT_TEST)
 @SuppressWarnings("unchecked")
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
@@ -446,6 +455,20 @@ class ClusterTopologyRefreshUnitTests {
 
         verify(connection1).closeAsync();
         verify(connection2).closeAsync();
+    }
+
+    /**
+     * @see <a href="https://github.com/redis/lettuce/issues/3240">Issue link</a>
+     */
+    @Test
+    @org.junit.jupiter.api.Timeout(value = 5, unit = TimeUnit.SECONDS, threadMode = SEPARATE_THREAD)
+    void shouldHandleInvalidUrisWithoutDeadlock() {
+        List<RedisURI> seed = Arrays.asList(RedisURI.create("redis://localhost:$(INVALID_DATA):CONFIG"),
+                RedisURI.create("redis://localhost:$(INVALID_DATA):CONFIG"));
+        CompletionException completionException = Assertions.assertThrows(CompletionException.class,
+                () -> sut.loadViews(seed, Duration.ofSeconds(1), true).toCompletableFuture().join());
+        assertThat(completionException)
+                .hasRootCauseInstanceOf(DefaultClusterTopologyRefresh.CannotRetrieveClusterPartitions.class);
     }
 
     @Test

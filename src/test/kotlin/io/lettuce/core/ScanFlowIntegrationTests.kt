@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,15 +19,19 @@
  */
 package io.lettuce.core
 
+import io.lettuce.TestTags
 import io.lettuce.core.api.StatefulRedisConnection
 import io.lettuce.core.api.coroutines
 import io.lettuce.test.LettuceExtension
+import io.lettuce.test.condition.RedisConditions
 import kotlinx.coroutines.flow.count
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
+import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.extension.ExtendWith
@@ -35,6 +43,7 @@ import javax.inject.Inject
  * @author Mikhael Sokolov
  * @author Mark Paluch
  */
+@Tag(TestTags.INTEGRATION_TEST)
 @ExtendWith(LettuceExtension::class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 internal class ScanFlowIntegrationTests @Inject constructor(private val connection: StatefulRedisConnection<String, String>) : TestSupport() {
@@ -66,6 +75,21 @@ internal class ScanFlowIntegrationTests @Inject constructor(private val connecti
 
             assertThat(ScanFlow.hscan(this, key, ScanArgs.Builder.limit(200)).take(250).toList()).hasSize(250)
             assertThat(ScanFlow.hscan(this, key).count()).isEqualTo(iterations)
+        }
+    }
+
+    @Test
+    fun `should hscanNovalues iteratively`() = runBlocking<Unit> {
+        // NOVALUES flag (since Redis 7.4)
+        assumeTrue(RedisConditions.of(connection).hasVersionGreaterOrEqualsTo("7.4"));
+
+        with(connection.coroutines()) {
+            repeat(iterations) {
+                hset(key, "field-$it", "value-$it")
+            }
+
+            assertThat(ScanFlow.hscanNovalues(this, key, ScanArgs.Builder.limit(200)).take(250).toList()).hasSize(250)
+            assertThat(ScanFlow.hscanNovalues(this, key).count()).isEqualTo(iterations)
         }
     }
 

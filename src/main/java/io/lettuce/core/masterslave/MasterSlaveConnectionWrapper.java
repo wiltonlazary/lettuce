@@ -1,18 +1,3 @@
-/*
- * Copyright 2019-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.masterslave;
 
 import java.time.Duration;
@@ -26,6 +11,7 @@ import io.lettuce.core.api.async.RedisAsyncCommands;
 import io.lettuce.core.api.push.PushListener;
 import io.lettuce.core.api.reactive.RedisReactiveCommands;
 import io.lettuce.core.api.sync.RedisCommands;
+import io.lettuce.core.codec.RedisCodec;
 import io.lettuce.core.masterreplica.StatefulRedisMasterReplicaConnection;
 import io.lettuce.core.protocol.RedisCommand;
 import io.lettuce.core.resource.ClientResources;
@@ -140,12 +126,6 @@ class MasterSlaveConnectionWrapper<K, V> implements StatefulRedisMasterSlaveConn
     }
 
     @Override
-    @Deprecated
-    public void reset() {
-        delegate.reset();
-    }
-
-    @Override
     public void setAutoFlushCommands(boolean autoFlush) {
         delegate.setAutoFlushCommands(autoFlush);
     }
@@ -153,6 +133,11 @@ class MasterSlaveConnectionWrapper<K, V> implements StatefulRedisMasterSlaveConn
     @Override
     public void flushCommands() {
         delegate.flushCommands();
+    }
+
+    @Override
+    public RedisCodec<K, V> getCodec() {
+        return delegate.getCodec();
     }
 
 }

@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -16,6 +20,7 @@
 package io.lettuce.core.protocol;
 
 import static io.lettuce.core.protocol.CommandHandler.*;
+import static io.lettuce.core.protocol.MaintenanceAwareConnectionWatchdog.REBIND_ATTRIBUTE;
 
 import java.io.IOException;
 import java.nio.channels.ClosedChannelException;
@@ -29,6 +34,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicIntegerFieldUpdater;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 import io.lettuce.core.ClientOptions;
@@ -76,6 +82,8 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
     protected volatile Channel channel;
 
     private final Reliability reliability;
+
+    private final Predicate<RedisCommand<?, ?, ?>> replayFilter;
 
     private final ClientOptions clientOptions;
 
@@ -135,6 +143,7 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
         this.clientOptions = clientOptions;
         this.clientResources = clientResources;
         this.reliability = clientOptions.isAutoReconnect() ? Reliability.AT_LEAST_ONCE : Reliability.AT_MOST_ONCE;
+        this.replayFilter = clientOptions.getReplayFilter();
         this.disconnectedBuffer = LettuceFactories.newConcurrentQueue(clientOptions.getRequestQueueSize());
         this.commandBuffer = LettuceFactories.newConcurrentQueue(clientOptions.getRequestQueueSize());
         this.boundedQueues = clientOptions.getRequestQueueSize() != Integer.MAX_VALUE;
@@ -191,9 +200,9 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
             }
 
             if (autoFlushCommands) {
-
-                if (isConnected()) {
-                    writeToChannelAndFlush(command);
+                Channel channel = this.channel;
+                if (isConnected(channel)) {
+                    writeToChannelAndFlush(channel, command);
                 } else {
                     writeToDisconnectedBuffer(command);
                 }
@@ -232,9 +241,9 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
             }
 
             if (autoFlushCommands) {
-
-                if (isConnected()) {
-                    writeToChannelAndFlush(commands);
+                Channel channel = this.channel;
+                if (isConnected(channel)) {
+                    writeToChannelAndFlush(channel, commands);
                 } else {
                     writeToDisconnectedBuffer(commands);
                 }
@@ -284,9 +293,8 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
             return new RedisException("Connection is closed");
         }
 
+        final boolean connected = isConnected(this.channel);
         if (usesBoundedQueues()) {
-
-            boolean connected = isConnected();
 
             if (QUEUE_SIZE.get(this) + commands > clientOptions.getRequestQueueSize()) {
                 return new RedisException("Request queue size exceeded: " + clientOptions.getRequestQueueSize()
@@ -304,7 +312,7 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
             }
         }
 
-        if (!isConnected() && rejectCommandsWhileDisconnected) {
+        if (!connected && rejectCommandsWhileDisconnected) {
             return new RedisException("Currently not connected. Commands are rejected.");
         }
 
@@ -340,6 +348,13 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
             return;
         }
 
+        if (replayFilter.test(command)) {
+            if (debugEnabled) {
+                logger.debug("{} writeToDisconnectedBuffer() Filtering out command {}", logPrefix(), command);
+            }
+            return;
+        }
+
         if (debugEnabled) {
             logger.debug("{} writeToDisconnectedBuffer() buffering (disconnected) command {}", logPrefix(), command);
         }
@@ -366,11 +381,11 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
         commandBuffer.add(command);
     }
 
-    private void writeToChannelAndFlush(RedisCommand<?, ?, ?> command) {
+    private void writeToChannelAndFlush(Channel channel, RedisCommand<?, ?, ?> command) {
 
         QUEUE_SIZE.incrementAndGet(this);
 
-        ChannelFuture channelFuture = channelWriteAndFlush(command);
+        ChannelFuture channelFuture = channelWriteAndFlush(channel, command);
 
         if (reliability == Reliability.AT_MOST_ONCE) {
             // cancel on exceptions and remove from queue, because there is no housekeeping
@@ -383,7 +398,7 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
         }
     }
 
-    private void writeToChannelAndFlush(Collection<? extends RedisCommand<?, ?, ?>> commands) {
+    private void writeToChannelAndFlush(Channel channel, Collection<? extends RedisCommand<?, ?, ?>> commands) {
 
         QUEUE_SIZE.addAndGet(this, commands.size());
 
@@ -391,7 +406,7 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
 
             // cancel on exceptions and remove from queue, because there is no housekeeping
             for (RedisCommand<?, ?, ?> command : commands) {
-                channelWrite(command).addListener(AtMostOnceWriteListener.newInstance(this, command));
+                channelWrite(channel, command).addListener(AtMostOnceWriteListener.newInstance(this, command));
             }
         }
 
@@ -399,14 +414,14 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
 
             // commands are ok to stay within the queue, reconnect will retrigger them
             for (RedisCommand<?, ?, ?> command : commands) {
-                channelWrite(command).addListener(RetryListener.newInstance(this, command));
+                channelWrite(channel, command).addListener(RetryListener.newInstance(this, command));
             }
         }
 
-        channelFlush();
+        channelFlush(channel);
     }
 
-    private void channelFlush() {
+    private void channelFlush(Channel channel) {
 
         if (debugEnabled) {
             logger.debug("{} write() channelFlush", logPrefix());
@@ -415,7 +430,7 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
         channel.flush();
     }
 
-    private ChannelFuture channelWrite(RedisCommand<?, ?, ?> command) {
+    private ChannelFuture channelWrite(Channel channel, RedisCommand<?, ?, ?> command) {
 
         if (debugEnabled) {
             logger.debug("{} write() channelWrite command {}", logPrefix(), command);
@@ -424,7 +439,7 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
         return channel.write(command);
     }
 
-    private ChannelFuture channelWriteAndFlush(RedisCommand<?, ?, ?> command) {
+    private ChannelFuture channelWriteAndFlush(Channel channel, RedisCommand<?, ?, ?> command) {
 
         if (debugEnabled) {
             logger.debug("{} write() writeAndFlush command {}", logPrefix(), command);
@@ -437,7 +452,6 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
     public void notifyChannelActive(Channel channel) {
 
         this.logPrefix = null;
-        this.channel = channel;
         this.connectionError = null;
 
         if (isClosed()) {
@@ -452,6 +466,7 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
         }
 
         sharedLock.doExclusive(() -> {
+            this.channel = channel;
 
             try {
                 // Move queued commands to buffer before issuing any commands because of connection activation.
@@ -474,15 +489,11 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
                     inActivation = false;
                 }
 
-                flushCommands(disconnectedBuffer);
+                flushCommands(channel, disconnectedBuffer);
             } catch (Exception e) {
 
                 if (debugEnabled) {
                     logger.debug("{} channelActive() ran into an exception", logPrefix());
-                }
-
-                if (clientOptions.isCancelCommandsOnReconnectFailure()) {
-                    reset();
                 }
 
                 throw e;
@@ -494,8 +505,8 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
     public void notifyChannelInactive(Channel channel) {
 
         if (isClosed()) {
-            RedisException closed = new RedisException("Connection closed");
-            cancelCommands("Connection closed", drainCommands(), it -> it.completeExceptionally(closed));
+            Lazy<RedisException> lazy = Lazy.of(() -> new RedisException("Connection closed"));
+            cancelCommands("Connection closed", drainCommands(), it -> it.completeExceptionally(lazy.get()));
         }
 
         sharedLock.doExclusive(() -> {
@@ -518,16 +529,10 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
         if (t instanceof RedisConnectionException && RedisConnectionException.isProtectedMode(t.getMessage())) {
 
             connectionError = t;
-
-            if (connectionWatchdog != null) {
-                connectionWatchdog.setListenOnChannelInactive(false);
-                connectionWatchdog.setReconnectSuspended(false);
-            }
-
             doExclusive(this::drainCommands).forEach(cmd -> cmd.completeExceptionally(t));
         }
 
-        if (!isConnected()) {
+        if (!isConnected(this.channel)) {
             connectionError = t;
         }
     }
@@ -540,16 +545,16 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
     @Override
     @SuppressWarnings({ "rawtypes", "unchecked" })
     public void flushCommands() {
-        flushCommands(commandBuffer);
+        flushCommands(this.channel, commandBuffer);
     }
 
-    private void flushCommands(Queue<RedisCommand<?, ?, ?>> queue) {
+    private void flushCommands(Channel channel, Queue<RedisCommand<?, ?, ?>> queue) {
 
         if (debugEnabled) {
             logger.debug("{} flushCommands()", logPrefix());
         }
 
-        if (isConnected()) {
+        if (isConnected(channel)) {
 
             List<RedisCommand<?, ?, ?>> commands = sharedLock.doExclusive(() -> {
 
@@ -565,7 +570,7 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
             }
 
             if (!commands.isEmpty()) {
-                writeToChannelAndFlush(commands);
+                writeToChannelAndFlush(channel, commands);
             }
         }
     }
@@ -628,30 +633,13 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
 
     private Channel getOpenChannel() {
 
-        Channel currentChannel = this.channel;
+        Channel channel = this.channel;
 
-        if (currentChannel != null) {
-            return currentChannel;
+        if (channel != null /* && channel.isOpen() is this deliberately omitted? */) {
+            return channel;
         }
 
         return null;
-    }
-
-    /**
-     * Reset the writer state. Queued commands will be canceled and the internal state will be reset. This is useful when the
-     * internal state machine gets out of sync with the connection.
-     */
-    @Override
-    public void reset() {
-
-        if (debugEnabled) {
-            logger.debug("{} reset()", logPrefix());
-        }
-
-        if (channel != null) {
-            channel.pipeline().fireUserEventTriggered(new ConnectionEvents.Reset());
-        }
-        cancelBufferedCommands("Reset");
     }
 
     /**
@@ -676,16 +664,15 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
 
         if (isClosed()) {
 
-            RedisException closed = new RedisException("Connection closed");
-            cancelCommands(closed.getMessage(), queuedCommands.drainQueue(), it -> it.completeExceptionally(closed));
-            cancelCommands(closed.getMessage(), drainCommands(), it -> it.completeExceptionally(closed));
+            Lazy<RedisException> lazy = Lazy.of(() -> new RedisException("Connection closed"));
+            cancelCommands("Connection closed", queuedCommands.drainQueue(), it -> it.completeExceptionally(lazy.get()));
+            cancelCommands("Connection closed", drainCommands(), it -> it.completeExceptionally(lazy.get()));
             return;
-        } else if (reliability == Reliability.AT_MOST_ONCE && rejectCommandsWhileDisconnected) {
+        } else if (rejectCommandsWhileDisconnected) {
 
-            RedisException disconnected = new RedisException("Connection disconnected");
-            cancelCommands(disconnected.getMessage(), queuedCommands.drainQueue(),
-                    it -> it.completeExceptionally(disconnected));
-            cancelCommands(disconnected.getMessage(), drainCommands(), it -> it.completeExceptionally(disconnected));
+            Lazy<RedisException> lazy = Lazy.of(() -> new RedisException("Connection disconnected"));
+            cancelCommands("Connection disconnected", queuedCommands.drainQueue(), it -> it.completeExceptionally(lazy.get()));
+            cancelCommands("Connection disconnected", drainCommands(), it -> it.completeExceptionally(lazy.get()));
             return;
         }
 
@@ -697,7 +684,7 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
                 logger.debug("{} notifyQueuedCommands adding {} command(s) to buffer", logPrefix(), commands.size());
             }
 
-            commands.addAll(drainCommands(disconnectedBuffer));
+            drainCommands(disconnectedBuffer, commands);
 
             for (RedisCommand<?, ?, ?> command : commands) {
 
@@ -721,9 +708,7 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
                 }
             }
 
-            if (isConnected()) {
-                flushCommands(disconnectedBuffer);
-            }
+            flushCommands(this.channel, disconnectedBuffer);
         });
     }
 
@@ -746,8 +731,8 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
 
         List<RedisCommand<?, ?, ?>> target = new ArrayList<>(disconnectedBuffer.size() + commandBuffer.size());
 
-        target.addAll(drainCommands(disconnectedBuffer));
-        target.addAll(drainCommands(commandBuffer));
+        drainCommands(disconnectedBuffer, target);
+        drainCommands(commandBuffer, target);
 
         return target;
     }
@@ -770,7 +755,24 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
             }
         }
 
+        drainCommands(source, target);
         return target;
+    }
+
+    /**
+     * Drain commands from a queue and return only active commands.
+     *
+     * @param source the source queue.
+     */
+    private static void drainCommands(Queue<? extends RedisCommand<?, ?, ?>> source, Collection<RedisCommand<?, ?, ?>> target) {
+
+        RedisCommand<?, ?, ?> cmd;
+        while ((cmd = source.poll()) != null) {
+
+            if (!cmd.isDone() && !ActivationCommand.isActivationCommand(cmd)) {
+                target.add(cmd);
+            }
+        }
     }
 
     private void cancelBufferedCommands(String message) {
@@ -788,10 +790,17 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
         }
     }
 
-    private boolean isConnected() {
+    private boolean isConnected(Channel channel) {
 
-        Channel channel = this.channel;
-        return channel != null && channel.isActive();
+        if (channel == null || !channel.isActive()) {
+            return false;
+        }
+
+        if (channel.hasAttr(REBIND_ATTRIBUTE)) {
+            return channel.attr(REBIND_ATTRIBUTE).get() != RebindState.STARTED;
+        }
+
+        return true;
     }
 
     protected String logPrefix() {
@@ -800,9 +809,12 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
             return logPrefix;
         }
 
-        String buffer = "[" + ChannelLogDescriptor.logDescriptor(channel) + ", " + "epid=" + getId()
-                + ']';
+        String buffer = "[" + ChannelLogDescriptor.logDescriptor(channel) + ", " + "epid=" + getId() + ']';
         return logPrefix = buffer;
+    }
+
+    protected ProtocolVersion getProtocolVersion() {
+        return clientOptions.getProtocolVersion();
     }
 
     @Override
@@ -1020,24 +1032,18 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
         private void potentiallyRequeueCommands(Channel channel, RedisCommand<?, ?, ?> sentCommand,
                 Collection<? extends RedisCommand<?, ?, ?>> sentCommands) {
 
+            // do not requeue commands that are done
             if (sentCommand != null && sentCommand.isDone()) {
                 return;
             }
 
-            if (sentCommands != null) {
+            // do not requeue commands that are to be filtered out
+            if (this.endpoint.replayFilter.test(sentCommand)) {
+                return;
+            }
 
-                boolean foundToSend = false;
-
-                for (RedisCommand<?, ?, ?> command : sentCommands) {
-                    if (!command.isDone()) {
-                        foundToSend = true;
-                        break;
-                    }
-                }
-
-                if (!foundToSend) {
-                    return;
-                }
+            if (sentCommands != null && sentCommands.stream().allMatch(RedisCommand::isDone)) {
+                return;
             }
 
             if (channel != null) {
@@ -1086,27 +1092,90 @@ public class DefaultEndpoint implements RedisChannelWriter, Endpoint, PushHandle
         AT_MOST_ONCE, AT_LEAST_ONCE
     }
 
-    static class ActivationCommand<K, V, T> extends CommandWrapper<K, V, T> {
+    static class Lazy<T> implements Supplier<T> {
 
-        public ActivationCommand(RedisCommand<K, V, T> command) {
-            super(command);
+        private static final Lazy<?> EMPTY = new Lazy<>(() -> null, null, true);
+
+        static final String UNRESOLVED = "[Unresolved]";
+
+        private final Supplier<? extends T> supplier;
+
+        private T value;
+
+        private volatile boolean resolved;
+
+        /**
+         * Creates a new {@link Lazy} instance for the given supplier.
+         *
+         * @param supplier
+         */
+        private Lazy(Supplier<? extends T> supplier) {
+            this(supplier, null, false);
         }
 
-        public static boolean isActivationCommand(RedisCommand<?, ?, ?> command) {
+        /**
+         * Creates a new {@link Lazy} for the given {@link Supplier}, value and whether it has been resolved or not.
+         *
+         * @param supplier must not be {@literal null}.
+         * @param value can be {@literal null}.
+         * @param resolved whether the value handed into the constructor represents a resolved value.
+         */
+        private Lazy(Supplier<? extends T> supplier, T value, boolean resolved) {
 
-            if (command instanceof ActivationCommand) {
-                return true;
+            this.supplier = supplier;
+            this.value = value;
+            this.resolved = resolved;
+        }
+
+        /**
+         * Creates a new {@link Lazy} to produce an object lazily.
+         *
+         * @param <T> the type of which to produce an object of eventually.
+         * @param supplier the {@link Supplier} to create the object lazily.
+         * @return
+         */
+        public static <T> Lazy<T> of(Supplier<? extends T> supplier) {
+            return new Lazy<>(supplier);
+        }
+
+        /**
+         * Creates a pre-resolved empty {@link Lazy}.
+         *
+         * @return
+         * @since 2.1
+         */
+        @SuppressWarnings("unchecked")
+        public static <T> Lazy<T> empty() {
+            return (Lazy<T>) EMPTY;
+        }
+
+        /**
+         * Returns the value created by the configured {@link Supplier}. Will return the calculated instance for subsequent
+         * lookups.
+         *
+         * @return
+         */
+        public T get() {
+
+            T value = getNullable();
+
+            if (value == null) {
+                throw new IllegalStateException("Expected lazy evaluation to yield a non-null value but got null");
             }
 
-            while (command instanceof CommandWrapper) {
-                command = ((CommandWrapper<?, ?, ?>) command).getDelegate();
+            return value;
+        }
 
-                if (command instanceof ActivationCommand) {
-                    return true;
-                }
+        public T getNullable() {
+
+            if (resolved) {
+                return value;
             }
 
-            return false;
+            this.value = supplier.get();
+            this.resolved = true;
+
+            return value;
         }
 
     }

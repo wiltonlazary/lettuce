@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -16,6 +20,7 @@
 package biz.paluch.redis.extensibility;
 
 import java.time.Duration;
+import java.util.function.Supplier;
 
 import javax.enterprise.inject.Alternative;
 
@@ -25,7 +30,9 @@ import io.lettuce.core.cluster.ClusterPushHandler;
 import io.lettuce.core.cluster.RedisClusterClient;
 import io.lettuce.core.cluster.StatefulRedisClusterConnectionImpl;
 import io.lettuce.core.codec.RedisCodec;
+import io.lettuce.core.json.JsonParser;
 import io.lettuce.core.resource.ClientResources;
+import reactor.core.publisher.Mono;
 
 /**
  * Demo code for extending a RedisClusterClient.
@@ -44,8 +51,9 @@ public class MyExtendedRedisClusterClient extends RedisClusterClient {
 
     @Override
     protected <V, K> StatefulRedisClusterConnectionImpl<K, V> newStatefulRedisClusterConnection(
-            RedisChannelWriter channelWriter, ClusterPushHandler pushHandler, RedisCodec<K, V> codec, Duration timeout) {
-        return new MyRedisClusterConnection<>(channelWriter, pushHandler, codec, timeout);
+            RedisChannelWriter channelWriter, ClusterPushHandler pushHandler, RedisCodec<K, V> codec, Duration timeout,
+            Supplier<JsonParser> parser) {
+        return new MyRedisClusterConnection<>(channelWriter, pushHandler, codec, timeout, parser);
     }
 
 }

@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,11 +19,13 @@
  */
 package io.lettuce.core.commands;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.*;
 
 import javax.inject.Inject;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,6 +49,7 @@ import io.lettuce.test.condition.EnabledOnCommand;
  * @author Mikhael Sokolov
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 @EnabledOnCommand("ACL")
@@ -120,8 +127,6 @@ public class AclCommandIntegrationTests extends TestSupport {
         assertThatThrownBy(() -> redis.auth("non-existing2", "foobar"));
         assertThat(redis.aclLog()).hasSize(2).first().hasFieldOrProperty("reason");
         assertThat(redis.aclLog(1)).hasSize(1);
-        assertThat(redis.aclLogReset()).isEqualTo("OK");
-        assertThat(redis.aclLog()).isEmpty();
     }
 
     @Test

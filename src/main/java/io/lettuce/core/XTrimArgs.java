@@ -1,7 +1,11 @@
 /*
- * Copyright 2021-2022 the original author or authors.
+ * Copyright 2021-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -20,8 +24,8 @@ import io.lettuce.core.protocol.CommandArgs;
 import io.lettuce.core.protocol.CommandKeyword;
 
 /**
- * Argument list builder for the Redis <a href="https://redis.io/commands/xadd">XTRIM</a> command. Static import the methods from
- * {@link Builder} and call the methods: {@code maxlen(…)} .
+ * Argument list builder for the Redis <a href="https://redis.io/commands/xadd">XTRIM</a> command. Static import the methods
+ * from {@link Builder} and call the methods: {@code maxlen(…)} .
  * <p>
  * {@link XTrimArgs} is a mutable object and instances should be used only once to avoid shared mutable state.
  *
@@ -39,6 +43,8 @@ public class XTrimArgs implements CompositeArgument {
     private String minId;
 
     private Long limit;
+
+    private StreamDeletionPolicy trimmingMode;
 
     /**
      * Builder entry points for {@link XTrimArgs}.
@@ -72,6 +78,7 @@ public class XTrimArgs implements CompositeArgument {
         public static XTrimArgs minId(String minid) {
             return new XTrimArgs().minId(minid);
         }
+
     }
 
     /**
@@ -82,7 +89,7 @@ public class XTrimArgs implements CompositeArgument {
      */
     public XTrimArgs maxlen(long maxlen) {
 
-        LettuceAssert.isTrue(maxlen > 0, "Maxlen must be greater 0");
+        LettuceAssert.isTrue(maxlen >= 0, "Maxlen must be greater or equal to 0");
 
         this.maxlen = maxlen;
         return this;
@@ -111,7 +118,7 @@ public class XTrimArgs implements CompositeArgument {
      */
     public XTrimArgs limit(long limit) {
 
-        LettuceAssert.isTrue(limit > 0, "Limit must be greater 0");
+        LettuceAssert.isTrue(limit >= 0, "Limit must be greater 0");
 
         this.limit = limit;
         return this;
@@ -159,6 +166,18 @@ public class XTrimArgs implements CompositeArgument {
         return this;
     }
 
+    /**
+     * Defines desired behaviour for handling consumer group references during trimming. See {@link StreamDeletionPolicy} for
+     * details.
+     *
+     * @param trimmingMode the deletion policy to apply during trimming.
+     * @return {@code this}
+     */
+    public XTrimArgs trimmingMode(StreamDeletionPolicy trimmingMode) {
+        this.trimmingMode = trimmingMode;
+        return this;
+    }
+
     @Override
     public <K, V> void build(CommandArgs<K, V> args) {
 
@@ -187,6 +206,10 @@ public class XTrimArgs implements CompositeArgument {
 
         if (limit != null && approximateTrimming) {
             args.add(CommandKeyword.LIMIT).add(limit);
+        }
+
+        if (trimmingMode != null) {
+            args.add(trimmingMode);
         }
     }
 

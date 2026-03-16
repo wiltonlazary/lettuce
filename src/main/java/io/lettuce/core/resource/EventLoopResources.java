@@ -1,7 +1,11 @@
 /*
- * Copyright 2019-2022 the original author or authors.
+ * Copyright 2019-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -20,7 +24,6 @@ import java.util.concurrent.ThreadFactory;
 
 import io.netty.channel.Channel;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.socket.DatagramChannel;
 import io.netty.util.concurrent.EventExecutorGroup;
 
@@ -47,7 +50,7 @@ public interface EventLoopResources {
     Class<? extends EventLoopGroup> eventLoopGroupClass();
 
     /**
-     * Create a new {@link EpollEventLoopGroup}.
+     * Create a new {@link EventLoopGroup}.
      *
      * @param nThreads number of threads.
      * @param threadFactory the {@link ThreadFactory}.

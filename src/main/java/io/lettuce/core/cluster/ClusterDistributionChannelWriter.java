@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -33,10 +37,12 @@ import io.lettuce.core.ReadFrom;
 import io.lettuce.core.RedisChannelHandler;
 import io.lettuce.core.RedisChannelWriter;
 import io.lettuce.core.RedisException;
+import io.lettuce.core.RedisURI;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.cluster.event.AskRedirectionEvent;
 import io.lettuce.core.cluster.event.MovedRedirectionEvent;
 import io.lettuce.core.cluster.models.partitions.Partitions;
+import io.lettuce.core.cluster.models.partitions.RedisClusterNode;
 import io.lettuce.core.codec.StringCodec;
 import io.lettuce.core.event.Event;
 import io.lettuce.core.internal.Futures;
@@ -51,7 +57,7 @@ import io.lettuce.core.protocol.CommandType;
 import io.lettuce.core.protocol.ConnectionFacade;
 import io.lettuce.core.protocol.ConnectionIntent;
 import io.lettuce.core.protocol.DefaultEndpoint;
-import io.lettuce.core.protocol.ProtocolKeyword;
+import io.lettuce.core.protocol.ReadOnlyCommands;
 import io.lettuce.core.protocol.RedisCommand;
 import io.lettuce.core.resource.ClientResources;
 
@@ -59,11 +65,16 @@ import io.lettuce.core.resource.ClientResources;
  * Channel writer for cluster operation. This writer looks up the right partition by hash/slot for the operation.
  *
  * @author Mark Paluch
+ * @author Jim Brunner
  * @since 3.0
  */
 class ClusterDistributionChannelWriter implements RedisChannelWriter {
 
     private final RedisChannelWriter defaultWriter;
+
+    private final ClientOptions clientOptions;
+
+    private final ReadOnlyCommands.ReadOnlyPredicate readOnlyCommands;
 
     private final ClusterEventListener clusterEventListener;
 
@@ -87,6 +98,8 @@ class ClusterDistributionChannelWriter implements RedisChannelWriter {
         }
 
         this.defaultWriter = defaultWriter;
+        this.clientOptions = clientOptions;
+        this.readOnlyCommands = clientOptions.getReadOnlyCommands();
         this.clusterEventListener = clusterEventListener;
     }
 
@@ -110,7 +123,6 @@ class ClusterDistributionChannelWriter implements RedisChannelWriter {
             ClusterCommand<K, V, T> clusterCommand = (ClusterCommand<K, V, T>) command;
             if (clusterCommand.isMoved() || clusterCommand.isAsk()) {
 
-
                 HostAndPort target;
                 boolean asking;
                 ByteBuffer firstEncodedKey = clusterCommand.getArgs().getFirstEncodedKey();
@@ -125,17 +137,17 @@ class ClusterDistributionChannelWriter implements RedisChannelWriter {
 
                 if (clusterCommand.isMoved()) {
 
-                    target = getMoveTarget(clusterCommand.getError());
+                    target = getMoveTarget(partitions, clusterCommand.getError());
                     clusterEventListener.onMovedRedirection();
                     asking = false;
 
-                    publish(new MovedRedirectionEvent(clusterCommand.getType().name(), keyAsString, slot,
+                    publish(new MovedRedirectionEvent(clusterCommand.getType().toString(), keyAsString, slot,
                             clusterCommand.getError()));
                 } else {
                     target = getAskTarget(clusterCommand.getError());
                     asking = true;
                     clusterEventListener.onAskRedirection();
-                    publish(new AskRedirectionEvent(clusterCommand.getType().name(), keyAsString, slot,
+                    publish(new AskRedirectionEvent(clusterCommand.getType().toString(), keyAsString, slot,
                             clusterCommand.getError()));
                 }
 
@@ -164,7 +176,7 @@ class ClusterDistributionChannelWriter implements RedisChannelWriter {
             if (encodedKey != null) {
 
                 int hash = getSlot(encodedKey);
-                ConnectionIntent connectionIntent = getIntent(command.getType());
+                ConnectionIntent connectionIntent = getIntent(command);
 
                 CompletableFuture<StatefulRedisConnection<K, V>> connectFuture = ((AsyncClusterConnectionProvider) clusterConnectionProvider)
                         .getConnectionAsync(connectionIntent, hash);
@@ -329,46 +341,33 @@ class ClusterDistributionChannelWriter implements RedisChannelWriter {
     /**
      * Optimization: Determine command intents and optimize for bulk execution preferring one node.
      * <p>
-     * If there is only one connectionIntent, then we take the connectionIntent derived from the commands. If there is more than one connectionIntent, then
-     * use {@link ConnectionIntent#WRITE}.
+     * If there is only one connectionIntent, then we take the connectionIntent derived from the commands. If there is more than
+     * one connectionIntent, then use {@link ConnectionIntent#WRITE}.
      *
      * @param commands {@link Collection} of {@link RedisCommand commands}.
      * @return the connectionIntent.
      */
-    static ConnectionIntent getIntent(Collection<? extends RedisCommand<?, ?, ?>> commands) {
+    ConnectionIntent getIntent(Collection<? extends RedisCommand<?, ?, ?>> commands) {
 
-        boolean w = false;
-        boolean r = false;
-        ConnectionIntent singleConnectionIntent = ConnectionIntent.WRITE;
+        if (commands.isEmpty()) {
+            return ConnectionIntent.WRITE;
+        }
 
         for (RedisCommand<?, ?, ?> command : commands) {
 
-            if (command instanceof ClusterCommand) {
-                continue;
-            }
-
-            singleConnectionIntent = getIntent(command.getType());
-            if (singleConnectionIntent == ConnectionIntent.READ) {
-                r = true;
-            }
-
-            if (singleConnectionIntent == ConnectionIntent.WRITE) {
-                w = true;
-            }
-
-            if (r && w) {
+            if (!readOnlyCommands.isReadOnly(command)) {
                 return ConnectionIntent.WRITE;
             }
         }
 
-        return singleConnectionIntent;
+        return ConnectionIntent.READ;
     }
 
-    private static ConnectionIntent getIntent(ProtocolKeyword type) {
-        return ReadOnlyCommands.isReadOnlyCommand(type) ? ConnectionIntent.READ : ConnectionIntent.WRITE;
+    private ConnectionIntent getIntent(RedisCommand<?, ?, ?> command) {
+        return readOnlyCommands.isReadOnly(command) ? ConnectionIntent.READ : ConnectionIntent.WRITE;
     }
 
-    static HostAndPort getMoveTarget(String errorMessage) {
+    static HostAndPort getMoveTarget(Partitions partitions, String errorMessage) {
 
         LettuceAssert.notEmpty(errorMessage, "ErrorMessage must not be empty");
         LettuceAssert.isTrue(errorMessage.startsWith(CommandKeyword.MOVED.name()),
@@ -376,8 +375,30 @@ class ClusterDistributionChannelWriter implements RedisChannelWriter {
 
         String[] movedMessageParts = errorMessage.split(" ");
         LettuceAssert.isTrue(movedMessageParts.length >= 3, "ErrorMessage must consist of 3 tokens (" + errorMessage + ")");
+        String redirectTarget = movedMessageParts[2];
 
-        return HostAndPort.parseCompat(movedMessageParts[2]);
+        if (redirectTarget.startsWith(":")) {
+
+            // unknown redirection hostname. We attempt discovering the hostname from Partitions
+
+            int redirectPort = Integer.parseInt(redirectTarget.substring(1));
+            for (RedisClusterNode partition : partitions) {
+
+                RedisURI uri = partition.getUri();
+                if (uri.getPort() == redirectPort) {
+                    return HostAndPort.of(uri.getHost(), redirectPort);
+                }
+            }
+
+            int slot = Integer.parseInt(movedMessageParts[1]);
+            RedisClusterNode partition = partitions.getPartitionBySlot(slot);
+            if (partition != null) {
+                RedisURI uri = partition.getUri();
+                return HostAndPort.of(uri.getHost(), redirectPort);
+            }
+        }
+
+        return HostAndPort.parseCompat(redirectTarget);
     }
 
     static HostAndPort getAskTarget(String errorMessage) {
@@ -474,12 +495,6 @@ class ClusterDistributionChannelWriter implements RedisChannelWriter {
 
     public ClusterConnectionProvider getClusterConnectionProvider() {
         return clusterConnectionProvider;
-    }
-
-    @Override
-    public void reset() {
-        defaultWriter.reset();
-        clusterConnectionProvider.reset();
     }
 
     public void setClusterConnectionProvider(ClusterConnectionProvider clusterConnectionProvider) {

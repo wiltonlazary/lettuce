@@ -1,18 +1,3 @@
-/*
- * Copyright 2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.output;
 
 import java.nio.ByteBuffer;
@@ -34,6 +19,8 @@ public class KeyValueValueListOutput<K, V> extends CommandOutput<K, V, KeyValue<
 
     private K key;
 
+    private boolean hasKey;
+
     private List<V> values = Collections.emptyList();
 
     public KeyValueValueListOutput(RedisCodec<K, V> codec) {
@@ -44,8 +31,9 @@ public class KeyValueValueListOutput<K, V> extends CommandOutput<K, V, KeyValue<
     public void set(ByteBuffer bytes) {
 
         if (bytes != null) {
-            if (key == null) {
+            if (!hasKey) {
                 key = codec.decodeKey(bytes);
+                hasKey = true;
             } else {
                 V value = codec.decodeValue(bytes);
                 values.add(value);
@@ -60,7 +48,7 @@ public class KeyValueValueListOutput<K, V> extends CommandOutput<K, V, KeyValue<
 
     @Override
     public void complete(int depth) {
-        if (depth == 0 && key != null) {
+        if (depth == 0 && hasKey) {
             output = KeyValue.just(key, values);
         }
     }

@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -16,6 +20,7 @@
 package io.lettuce.core.protocol;
 
 import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -45,10 +50,11 @@ import io.netty.buffer.UnpooledByteBufAllocator;
  * @param <V> Value type.
  * @author Will Glozer
  * @author Mark Paluch
+ * @author shikharid
  */
 public class CommandArgs<K, V> {
 
-    static final byte[] CRLF = "\r\n".getBytes(StandardCharsets.US_ASCII);
+    static final byte[] CRLF = "\r\n".getBytes(StandardCharsets.UTF_8);
 
     protected final RedisCodec<K, V> codec;
 
@@ -278,6 +284,41 @@ public class CommandArgs<K, V> {
     }
 
     /**
+     * Add an object argument. Dispatches to the appropriate typed add method based on runtime type.
+     * <p>
+     * Supports: {@link String}, {@link Long}, {@link Integer}, {@link Double}, {@link Float}, {@link ProtocolKeyword},
+     * {@code byte[]}. Other types are converted via {@link Object#toString()}.
+     * </p>
+     *
+     * @param obj the object to add, must not be {@code null}
+     * @return the command args.
+     * @since 7.5
+     */
+    public CommandArgs<K, V> add(Object obj) {
+
+        LettuceAssert.notNull(obj, "Argument must not be null");
+
+        if (obj instanceof String) {
+            singularArguments.add(StringArgument.of((String) obj));
+        } else if (obj instanceof Long) {
+            singularArguments.add(IntegerArgument.of((Long) obj));
+        } else if (obj instanceof Integer) {
+            singularArguments.add(IntegerArgument.of((long) (Integer) obj));
+        } else if (obj instanceof Double) {
+            singularArguments.add(DoubleArgument.of((Double) obj));
+        } else if (obj instanceof Float) {
+            singularArguments.add(DoubleArgument.of((double) (Float) obj));
+        } else if (obj instanceof ProtocolKeyword) {
+            singularArguments.add(ProtocolKeywordArgument.of((ProtocolKeyword) obj));
+        } else if (obj instanceof byte[]) {
+            singularArguments.add(BytesArgument.of((byte[]) obj));
+        } else {
+            singularArguments.add(StringArgument.of(obj.toString()));
+        }
+        return this;
+    }
+
+    /**
      * Add all arguments from {@link CommandArgs}
      *
      * @param args the args, must not be {@code null}
@@ -436,7 +477,7 @@ public class CommandArgs<K, V> {
 
         @Override
         public String toString() {
-            return protocolKeyword.name();
+            return protocolKeyword.toString();
         }
 
     }
@@ -546,9 +587,9 @@ public class CommandArgs<K, V> {
 
     static class IntegerCache {
 
-        static final IntegerArgument cache[];
+        static final IntegerArgument[] cache;
 
-        static final IntegerArgument negativeCache[];
+        static final IntegerArgument[] negativeCache;
 
         static {
             int high = Integer.getInteger("io.lettuce.core.CommandArgs.IntegerCache", 128);
@@ -604,16 +645,9 @@ public class CommandArgs<K, V> {
         }
 
         static void writeString(ByteBuf target, String value) {
+            byte[] output = value.getBytes(StandardCharsets.UTF_8);
 
-            target.writeByte('$');
-
-            IntegerArgument.writeInteger(target, value.length());
-            target.writeBytes(CRLF);
-
-            for (int i = 0; i < value.length(); i++) {
-                target.writeByte((byte) value.charAt(i));
-            }
-            target.writeBytes(CRLF);
+            BytesArgument.writeBytes(target, output);
         }
 
         @Override
@@ -641,16 +675,11 @@ public class CommandArgs<K, V> {
         }
 
         static void writeString(ByteBuf target, char[] value) {
+            final ByteBuffer byteBuffer = StandardCharsets.UTF_8.encode(CharBuffer.wrap(value));
+            final byte[] output = new byte[byteBuffer.remaining()];
+            byteBuffer.get(output);
 
-            target.writeByte('$');
-
-            IntegerArgument.writeInteger(target, value.length);
-            target.writeBytes(CRLF);
-
-            for (int i = 0; i < value.length; i++) {
-                target.writeByte((byte) value[i]);
-            }
-            target.writeBytes(CRLF);
+            BytesArgument.writeBytes(target, output);
         }
 
         @Override
@@ -680,18 +709,7 @@ public class CommandArgs<K, V> {
         void encode(ByteBuf target) {
 
             if (codec instanceof ToByteBufEncoder) {
-
-                ToByteBufEncoder<K, V> toByteBufEncoder = (ToByteBufEncoder<K, V>) codec;
-                ByteBuf temporaryBuffer = target.alloc().buffer(toByteBufEncoder.estimateSize(key) + 6);
-
-                try {
-
-                    toByteBufEncoder.encodeKey(key, temporaryBuffer);
-                    ByteBufferArgument.writeByteBuf(target, temporaryBuffer);
-                } finally {
-                    temporaryBuffer.release();
-                }
-
+                CommandArgs.encode(target, (ToByteBufEncoder<K, K>) codec, key, ToByteBufEncoder::encodeKey);
                 return;
             }
 
@@ -725,17 +743,7 @@ public class CommandArgs<K, V> {
         void encode(ByteBuf target) {
 
             if (codec instanceof ToByteBufEncoder) {
-
-                ToByteBufEncoder<K, V> toByteBufEncoder = (ToByteBufEncoder<K, V>) codec;
-                ByteBuf temporaryBuffer = target.alloc().buffer(toByteBufEncoder.estimateSize(val) + 6);
-
-                try {
-                    toByteBufEncoder.encodeValue(val, temporaryBuffer);
-                    ByteBufferArgument.writeByteBuf(target, temporaryBuffer);
-                } finally {
-                    temporaryBuffer.release();
-                }
-
+                CommandArgs.encode(target, (ToByteBufEncoder<V, V>) codec, val, ToByteBufEncoder::encodeValue);
                 return;
             }
 
@@ -746,6 +754,35 @@ public class CommandArgs<K, V> {
         public String toString() {
             return String.format("value<%s>", new StringCodec().decodeValue(codec.encodeValue(val)));
         }
+
+    }
+
+    static <T> void encode(ByteBuf target, ToByteBufEncoder<T, T> encoder, T item, EncodeFunction<T> encodeFunction) {
+
+        if (encoder.isEstimateExact()) {
+
+            target.writeByte('$');
+            IntegerArgument.writeInteger(target, encoder.estimateSize(item));
+            target.writeBytes(CRLF);
+
+            encodeFunction.encode(encoder, item, target);
+            target.writeBytes(CRLF);
+        } else {
+
+            ByteBuf temporaryBuffer = target.alloc().buffer(encoder.estimateSize(item) + 6);
+
+            try {
+                encodeFunction.encode(encoder, item, temporaryBuffer);
+                ByteBufferArgument.writeByteBuf(target, temporaryBuffer);
+            } finally {
+                temporaryBuffer.release();
+            }
+        }
+    }
+
+    interface EncodeFunction<T> {
+
+        void encode(ToByteBufEncoder<T, T> encoder, T item, ByteBuf target);
 
     }
 

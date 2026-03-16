@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,15 +19,19 @@
  */
 package io.lettuce.core;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
+import reactor.test.StepVerifier;
 
 /**
  * Unit tests for {@link RedisURI.Builder}.
@@ -31,6 +39,7 @@ import org.junit.jupiter.api.condition.OS;
  * @author Mark Paluch
  * @author Guy Korland
  */
+@Tag(UNIT_TEST)
 class RedisURIBuilderUnitTests {
 
     @Test
@@ -85,6 +94,65 @@ class RedisURIBuilderUnitTests {
     }
 
     @Test
+    void redisWithLibrary() {
+        RedisURI result = RedisURI.Builder.redis("localhost").withLibraryName("name").withLibraryVersion("1.foo").build();
+
+        assertThat(result.getLibraryName()).isEqualTo("name");
+        assertThat(result.getLibraryVersion()).isEqualTo("1.foo");
+    }
+
+    @Test
+    void redisWithDriverInfo() {
+        DriverInfo driverInfo = DriverInfo.builder().addUpstreamDriver("spring-data-redis", "3.2.0").build();
+        RedisURI result = RedisURI.Builder.redis("localhost").withDriverInfo(driverInfo).build();
+
+        assertThat(result.getLibraryName()).isEqualTo("Lettuce(spring-data-redis_v3.2.0)");
+    }
+
+    @Test
+    void redisWithDriverInfoMultipleDrivers() {
+        DriverInfo driverInfo = DriverInfo.builder().addUpstreamDriver("spring-data-redis", "3.2.0")
+                .addUpstreamDriver("spring-boot", "3.3.0").build();
+        RedisURI result = RedisURI.Builder.redis("localhost").withDriverInfo(driverInfo).build();
+
+        // Most recently added driver should appear first (prepend behavior)
+        assertThat(result.getLibraryName()).isEqualTo("Lettuce(spring-boot_v3.3.0;spring-data-redis_v3.2.0)");
+    }
+
+    @Test
+    void redisWithDriverInfoCustomName() {
+        DriverInfo driverInfo = DriverInfo.builder().name("my-custom-lib").addUpstreamDriver("spring-data-redis", "3.2.0")
+                .build();
+        RedisURI result = RedisURI.Builder.redis("localhost").withDriverInfo(driverInfo).build();
+
+        assertThat(result.getLibraryName()).isEqualTo("my-custom-lib(spring-data-redis_v3.2.0)");
+    }
+
+    @Test
+    void redisWithDriverInfoNullShouldFail() {
+        assertThatThrownBy(() -> RedisURI.Builder.redis("localhost").withDriverInfo(null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void redisWithLibraryNameThenDriverInfo() {
+        // Last call wins: withDriverInfo overwrites previous withLibraryName
+        DriverInfo driverInfo = DriverInfo.builder().addUpstreamDriver("spring-data-redis", "3.2.0").build();
+        RedisURI result = RedisURI.Builder.redis("localhost").withLibraryName("my-lib").withDriverInfo(driverInfo).build();
+
+        assertThat(result.getLibraryName()).isEqualTo("Lettuce(spring-data-redis_v3.2.0)");
+    }
+
+    @Test
+    void redisWithDriverInfoThenLibraryName() {
+        // Last call wins: withLibraryName overwrites previous withDriverInfo
+        DriverInfo driverInfo = DriverInfo.builder().addUpstreamDriver("spring-data-redis", "3.2.0").build();
+        RedisURI result = RedisURI.Builder.redis("localhost").withDriverInfo(driverInfo).withLibraryName("my-lib").build();
+
+        assertThat(result.getLibraryName()).isEqualTo("my-lib");
+    }
+
+    @Test
     void redisHostAndPortWithInvalidPort() {
         assertThatThrownBy(() -> RedisURI.Builder.redis("localhost", -1)).isInstanceOf(IllegalArgumentException.class);
     }
@@ -102,7 +170,10 @@ class RedisURIBuilderUnitTests {
         assertThat(result.getSentinels()).isEmpty();
         assertThat(result.getHost()).isEqualTo("localhost");
         assertThat(result.getPort()).isEqualTo(RedisURI.DEFAULT_REDIS_PORT);
-        assertThat(result.getPassword()).isEqualTo("password".toCharArray());
+        StepVerifier.create(result.getCredentialsProvider().resolveCredentials()).assertNext(credentials -> {
+            assertThat(credentials.getUsername()).isNull();
+            assertThat(credentials.getPassword()).isEqualTo("password".toCharArray());
+        }).verifyComplete();
         assertThat(result.getDatabase()).isEqualTo(21);
         assertThat(result.isSsl()).isFalse();
     }
@@ -110,19 +181,26 @@ class RedisURIBuilderUnitTests {
     @Test
     void redisFromUrlNoPassword() {
         RedisURI redisURI = RedisURI.create("redis://localhost:1234/5");
-        assertThat(redisURI.getPassword()).isNull();
-        assertThat(redisURI.getUsername()).isNull();
+        StepVerifier.create(redisURI.getCredentialsProvider().resolveCredentials()).assertNext(credentials -> {
+            assertThat(credentials.getUsername()).isNull();
+            assertThat(credentials.getPassword()).isNull();
+        }).verifyComplete();
 
         redisURI = RedisURI.create("redis://h:@localhost.com:14589");
-        assertThat(redisURI.getPassword()).isNull();
-        assertThat(redisURI.getUsername()).isNull();
+        StepVerifier.create(redisURI.getCredentialsProvider().resolveCredentials()).assertNext(credentials -> {
+            assertThat(credentials.getUsername()).isNull();
+            assertThat(credentials.getPassword()).isNull();
+        }).verifyComplete();
     }
 
     @Test
     void redisFromUrlPassword() {
         RedisURI redisURI = RedisURI.create("redis://h:password@localhost.com:14589");
-        assertThat(redisURI.getPassword()).isEqualTo("password".toCharArray());
-        assertThat(redisURI.getUsername()).isEqualTo("h");
+
+        StepVerifier.create(redisURI.getCredentialsProvider().resolveCredentials()).assertNext(credentials -> {
+            assertThat(credentials.getUsername()).isEqualTo("h");
+            assertThat(credentials.getPassword()).isEqualTo("password".toCharArray());
+        }).verifyComplete();
     }
 
     @Test
@@ -153,8 +231,11 @@ class RedisURIBuilderUnitTests {
         assertThat(result.getSentinels()).isEmpty();
         assertThat(result.getHost()).isEqualTo("localhost");
         assertThat(result.getPort()).isEqualTo(RedisURI.DEFAULT_REDIS_PORT);
-        assertThat(result.getPassword()).isEqualTo("password".toCharArray());
-        assertThat(result.getUsername()).isNull();
+        StepVerifier.create(result.getCredentialsProvider().resolveCredentials()).assertNext(credentials -> {
+            assertThat(credentials.getUsername()).isNull();
+            assertThat(credentials.getPassword()).isEqualTo("password".toCharArray());
+        }).verifyComplete();
+
         assertThat(result.isSsl()).isTrue();
     }
 
@@ -165,17 +246,23 @@ class RedisURIBuilderUnitTests {
         assertThat(result.getSentinels()).hasSize(1);
         assertThat(result.getHost()).isNull();
         assertThat(result.getPort()).isEqualTo(RedisURI.DEFAULT_REDIS_PORT);
-        assertThat(result.getPassword()).isEqualTo("password".toCharArray());
         assertThat(result.getSentinelMasterId()).isEqualTo("master");
         assertThat(result.toString()).contains("master");
+        StepVerifier.create(result.getCredentialsProvider().resolveCredentials()).assertNext(credentials -> {
+            assertThat(credentials.getUsername()).isNull();
+            assertThat(credentials.getPassword()).isEqualTo("password".toCharArray());
+        }).verifyComplete();
 
         result = RedisURI.create(RedisURI.URI_SCHEME_REDIS_SENTINEL + "://password@host1:1,host2:3423,host3/1#master");
 
         assertThat(result.getSentinels()).hasSize(3);
         assertThat(result.getHost()).isNull();
         assertThat(result.getPort()).isEqualTo(RedisURI.DEFAULT_REDIS_PORT);
-        assertThat(result.getPassword()).isEqualTo("password".toCharArray());
         assertThat(result.getSentinelMasterId()).isEqualTo("master");
+        StepVerifier.create(result.getCredentialsProvider().resolveCredentials()).assertNext(credentials -> {
+            assertThat(credentials.getUsername()).isNull();
+            assertThat(credentials.getPassword()).isEqualTo("password".toCharArray());
+        }).verifyComplete();
 
         RedisURI sentinel1 = result.getSentinels().get(0);
         assertThat(sentinel1.getPort()).isEqualTo(1);
@@ -196,7 +283,10 @@ class RedisURIBuilderUnitTests {
         RedisURI result = RedisURI.Builder.sentinel("host", 1234, "master", "foo").build();
 
         RedisURI sentinel = result.getSentinels().get(0);
-        assertThat(new String(sentinel.getPassword())).isEqualTo("foo");
+        StepVerifier.create(sentinel.getCredentialsProvider().resolveCredentials()).assertNext(credentials -> {
+            assertThat(credentials.getUsername()).isNull();
+            assertThat(credentials.getPassword()).isEqualTo("foo".toCharArray());
+        }).verifyComplete();
     }
 
     @Test
@@ -206,21 +296,34 @@ class RedisURIBuilderUnitTests {
                 .withVerifyPeer(false).build();
 
         RedisURI sentinel = result.getSentinels().get(0);
-        assertThat(new String(sentinel.getPassword())).isEqualTo("foo");
         assertThat(sentinel.isSsl()).isTrue();
         assertThat(sentinel.isStartTls()).isTrue();
         assertThat(sentinel.isVerifyPeer()).isFalse();
+
+        StepVerifier.create(sentinel.getCredentialsProvider().resolveCredentials()).assertNext(credentials -> {
+            assertThat(credentials.getUsername()).isNull();
+            assertThat(credentials.getPassword()).isEqualTo("foo".toCharArray());
+        }).verifyComplete();
     }
 
     @Test
     void withAuthenticatedSentinelUri() {
 
         RedisURI sentinel = new RedisURI("host", 1234, Duration.ZERO);
-        sentinel.setPassword("bar");
+        sentinel.setAuthentication("bar".toCharArray());
         RedisURI result = RedisURI.Builder.sentinel("host", 1234, "master").withSentinel(sentinel).build();
 
-        assertThat(result.getSentinels().get(0).getPassword()).isNull();
-        assertThat(new String(result.getSentinels().get(1).getPassword())).isEqualTo("bar");
+        StepVerifier.create(result.getSentinels().get(0).getCredentialsProvider().resolveCredentials())
+                .assertNext(credentials -> {
+                    assertThat(credentials.getUsername()).isNull();
+                    assertThat(credentials.getPassword()).isNull();
+                }).verifyComplete();
+
+        StepVerifier.create(result.getSentinels().get(1).getCredentialsProvider().resolveCredentials())
+                .assertNext(credentials -> {
+                    assertThat(credentials.getUsername()).isNull();
+                    assertThat(credentials.getPassword()).isEqualTo("bar".toCharArray());
+                }).verifyComplete();
     }
 
     @Test
@@ -228,13 +331,32 @@ class RedisURIBuilderUnitTests {
 
         RedisURI result = RedisURI.Builder.sentinel("host", 1234, "master", "foo").withSentinel("bar").build();
 
-        assertThat(new String(result.getSentinels().get(0).getPassword())).isEqualTo("foo");
-        assertThat(new String(result.getSentinels().get(1).getPassword())).isEqualTo("foo");
+        StepVerifier.create(result.getSentinels().get(0).getCredentialsProvider().resolveCredentials())
+                .assertNext(credentials -> {
+                    assertThat(credentials.getUsername()).isNull();
+                    assertThat(credentials.getPassword()).isEqualTo("foo".toCharArray());
+                }).verifyComplete();
 
-        result = RedisURI.Builder.sentinel("host", 1234, "master", "foo").withSentinel("bar", 1234, "baz").build();
+        StepVerifier.create(result.getSentinels().get(1).getCredentialsProvider().resolveCredentials())
+                .assertNext(credentials -> {
+                    assertThat(credentials.getUsername()).isNull();
+                    assertThat(credentials.getPassword()).isNull();
+                }).verifyComplete();
 
-        assertThat(new String(result.getSentinels().get(0).getPassword())).isEqualTo("foo");
-        assertThat(new String(result.getSentinels().get(1).getPassword())).isEqualTo("baz");
+        result = RedisURI.Builder.sentinel("host", 1234, "master").withPassword("foo".toCharArray())
+                .withSentinel("bar", 1234, "baz").build();
+
+        StepVerifier.create(result.getSentinels().get(0).getCredentialsProvider().resolveCredentials())
+                .assertNext(credentials -> {
+                    assertThat(credentials.getUsername()).isNull();
+                    assertThat(credentials.getPassword()).isNull();
+                }).verifyComplete();
+
+        StepVerifier.create(result.getSentinels().get(1).getCredentialsProvider().resolveCredentials())
+                .assertNext(credentials -> {
+                    assertThat(credentials.getUsername()).isNull();
+                    assertThat(credentials.getPassword()).isEqualTo("baz".toCharArray());
+                }).verifyComplete();
     }
 
     @Test
@@ -265,10 +387,14 @@ class RedisURIBuilderUnitTests {
 
         assertThat(result.getSocket()).isEqualTo(file.getCanonicalPath());
         assertThat(result.getSentinels()).isEmpty();
-        assertThat(result.getPassword()).isNull();
         assertThat(result.getHost()).isNull();
         assertThat(result.getPort()).isEqualTo(RedisURI.DEFAULT_REDIS_PORT);
         assertThat(result.isSsl()).isFalse();
+
+        StepVerifier.create(result.getCredentialsProvider().resolveCredentials()).assertNext(credentials -> {
+            assertThat(credentials.getUsername()).isNull();
+            assertThat(credentials.getPassword()).isNull();
+        }).verifyComplete();
     }
 
     @Test
@@ -279,10 +405,14 @@ class RedisURIBuilderUnitTests {
 
         assertThat(result.getSocket()).isEqualTo(file.getCanonicalPath());
         assertThat(result.getSentinels()).isEmpty();
-        assertThat(result.getPassword()).isEqualTo("password".toCharArray());
         assertThat(result.getHost()).isNull();
         assertThat(result.getPort()).isEqualTo(RedisURI.DEFAULT_REDIS_PORT);
         assertThat(result.isSsl()).isFalse();
+
+        StepVerifier.create(result.getCredentialsProvider().resolveCredentials()).assertNext(credentials -> {
+            assertThat(credentials.getUsername()).isNull();
+            assertThat(credentials.getPassword()).isEqualTo("password".toCharArray());
+        }).verifyComplete();
     }
 
     @Test
@@ -301,31 +431,6 @@ class RedisURIBuilderUnitTests {
     }
 
     @Test
-    void shouldApplyAuthentication() {
-
-        RedisURI source = new RedisURI();
-        source.setUsername("foo");
-        source.setPassword("bar");
-
-        RedisURI target = RedisURI.builder().withHost("localhost").withAuthentication(source).build();
-
-        assertThat(target.getUsername()).isEqualTo("foo");
-        assertThat(target.getPassword()).isEqualTo("bar".toCharArray());
-
-        RedisCredentialsProvider provider = RedisCredentialsProvider
-                .from(() -> RedisCredentials.just("suppliedUsername", "suppliedPassword".toCharArray()));
-
-        RedisURI sourceCp = new RedisURI();
-        sourceCp.setCredentialsProvider(provider);
-
-        RedisURI targetCp = RedisURI.builder().withHost("localhost").withAuthentication(sourceCp).build();
-
-        assertThat(targetCp.getUsername()).isNull();
-        assertThat(targetCp.getPassword()).isNull();
-        assertThat(sourceCp.getCredentialsProvider()).isEqualTo(targetCp.getCredentialsProvider());
-    }
-
-    @Test
     void shouldInitializeBuilder() {
 
         RedisURI source = new RedisURI();
@@ -333,28 +438,33 @@ class RedisURIBuilderUnitTests {
         source.setPort(1234);
         source.setTimeout(Duration.ofSeconds(2));
         source.setClientName("foo");
-        source.setUsername("foo");
-        source.setPassword("bar");
+        source.setLibraryName("lib");
+        source.setLibraryVersion("libver");
+        source.setAuthentication("foo", "bar");
         source.setDatabase(4);
         source.setSsl(true);
         source.setVerifyPeer(false);
         source.setStartTls(true);
 
         RedisURI target = RedisURI.builder(source).build();
-
-        source.setPassword("baz");
+        target.setAuthentication("baz");
 
         assertThat(target.getHost()).isEqualTo(source.getHost());
         assertThat(target.getPort()).isEqualTo(source.getPort());
-        assertThat(target.getUsername()).isEqualTo(source.getUsername());
-        assertThat(target.getPassword()).isEqualTo("bar".toCharArray());
         assertThat(target.getTimeout()).isEqualTo(source.getTimeout());
         assertThat(target.getClientName()).isEqualTo(source.getClientName());
+        assertThat(target.getLibraryName()).isEqualTo(source.getLibraryName());
+        assertThat(target.getLibraryVersion()).isEqualTo(source.getLibraryVersion());
         assertThat(target.getSocket()).isEqualTo(source.getSocket());
         assertThat(target.getDatabase()).isEqualTo(source.getDatabase());
         assertThat(target.isStartTls()).isEqualTo(source.isStartTls());
         assertThat(target.isSsl()).isEqualTo(source.isSsl());
         assertThat(target.isVerifyPeer()).isEqualTo(source.isVerifyPeer());
+
+        StepVerifier.create(target.getCredentialsProvider().resolveCredentials()).assertNext(credentials -> {
+            assertThat(credentials.getUsername()).isNull();
+            assertThat(credentials.getPassword()).isEqualTo("baz".toCharArray());
+        }).verifyComplete();
     }
 
     @Test

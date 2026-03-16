@@ -1,20 +1,6 @@
-/*
- * Copyright 2019-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.support;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.function.BiConsumer;
@@ -22,6 +8,7 @@ import java.util.function.Function;
 
 import org.apache.commons.pool2.impl.BaseObjectPoolConfig;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -29,24 +16,30 @@ import org.junit.jupiter.api.Test;
  *
  * @author Mark Paluch
  */
+@Tag(UNIT_TEST)
 class CommonsPool2ConfigConverterUnitTests {
+
+    private static final int MIN_IDLE_EXPECTED = 2;
+
+    private static final int MAX_IDLE_EXPECTED = 12;
+
+    private static final int MAX_TOTAL_EXPECTED = 13;
 
     @Test
     void shouldAdaptConfiguration() {
-
         GenericObjectPoolConfig<String> config = new GenericObjectPoolConfig<>();
-        config.setMinIdle(2);
-        config.setMaxIdle(12);
-        config.setMaxTotal(13);
+        config.setMinIdle(MIN_IDLE_EXPECTED);
+        config.setMaxIdle(MAX_IDLE_EXPECTED);
+        config.setMaxTotal(MAX_TOTAL_EXPECTED);
         config.setTestOnBorrow(true);
         config.setTestOnReturn(true);
         config.setTestOnCreate(true);
 
         BoundedPoolConfig result = CommonsPool2ConfigConverter.bounded(config);
 
-        assertThat(result.getMinIdle()).isEqualTo(2);
-        assertThat(result.getMaxIdle()).isEqualTo(12);
-        assertThat(result.getMaxTotal()).isEqualTo(13);
+        assertThat(result.getMinIdle()).isEqualTo(MIN_IDLE_EXPECTED);
+        assertThat(result.getMaxIdle()).isEqualTo(MAX_IDLE_EXPECTED);
+        assertThat(result.getMaxTotal()).isEqualTo(MAX_TOTAL_EXPECTED);
         assertThat(result.isTestOnAcquire()).isTrue();
         assertThat(result.isTestOnCreate()).isTrue();
         assertThat(result.isTestOnRelease()).isTrue();
@@ -96,4 +89,5 @@ class CommonsPool2ConfigConverterUnitTests {
 
         assertThat(targetExtractor.apply(result)).isEqualTo(value);
     }
+
 }

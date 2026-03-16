@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -54,7 +58,7 @@ class ReconnectionHandler {
 
     private final Bootstrap bootstrap;
 
-    private final Mono<SocketAddress> socketAddressSupplier;
+    protected Mono<SocketAddress> socketAddressSupplier;
 
     private final ConnectionFacade connectionFacade;
 
@@ -151,10 +155,6 @@ class ReconnectionHandler {
                     if (isExecutionException(throwable)) {
                         result.completeExceptionally(throwable);
                         return;
-                    }
-
-                    if (clientOptions.isCancelCommandsOnReconnectFailure()) {
-                        connectionFacade.reset();
                     }
 
                     if (clientOptions.isSuspendReconnectOnProtocolFailure()) {

@@ -1,26 +1,13 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
 
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -28,6 +15,7 @@ import org.junit.jupiter.api.Test;
  *
  * @author Mark Paluch
  */
+@Tag(UNIT_TEST)
 class ValueUnitTests {
 
     @Test
@@ -141,8 +129,8 @@ class ValueUnitTests {
 
         Value<String> value = Value.from(Optional.empty());
 
-        assertThatThrownBy(() -> value.getValueOrElseThrow(IllegalArgumentException::new)).isInstanceOf(
-                IllegalArgumentException.class);
+        assertThatThrownBy(() -> value.getValueOrElseThrow(IllegalArgumentException::new))
+                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -278,4 +266,5 @@ class ValueUnitTests {
 
         assertThat(empty.stream().count()).isEqualTo(1);
     }
+
 }

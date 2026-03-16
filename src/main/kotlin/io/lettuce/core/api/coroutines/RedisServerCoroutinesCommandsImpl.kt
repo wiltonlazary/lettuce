@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -17,6 +21,7 @@
 package io.lettuce.core.api.coroutines
 
 import io.lettuce.core.*
+import io.lettuce.core.TrackingInfo
 import io.lettuce.core.api.reactive.RedisServerReactiveCommands
 import io.lettuce.core.protocol.CommandType
 import kotlinx.coroutines.flow.toList
@@ -56,13 +61,22 @@ internal class RedisServerCoroutinesCommandsImpl<K : Any, V : Any>(internal val 
 
     override suspend fun clientList(): String? = ops.clientList().awaitFirstOrNull()
 
+    override suspend fun clientList(clientListArgs: ClientListArgs): String? = ops.clientList(clientListArgs).awaitFirstOrNull()
+
+    override suspend fun clientInfo(): String? = ops.clientInfo().awaitFirstOrNull()
+
     override suspend fun clientNoEvict(on: Boolean): String? = ops.clientNoEvict(on).awaitFirstOrNull()
 
     override suspend fun clientPause(timeout: Long): String? = ops.clientPause(timeout).awaitFirstOrNull()
 
+    override suspend fun clientSetinfo(key: String, value: String): String? =
+        ops.clientSetinfo(key, value).awaitFirstOrNull()
+
     override suspend fun clientSetname(name: K): String? = ops.clientSetname(name).awaitFirstOrNull()
 
     override suspend fun clientTracking(args: TrackingArgs): String? = ops.clientTracking(args).awaitFirstOrNull()
+
+    override suspend fun clientTrackinginfo(): TrackingInfo? = ops.clientTrackinginfo().awaitFirstOrNull()
 
     override suspend fun clientUnblock(id: Long, type: UnblockType): Long? = ops.clientUnblock(id, type).awaitFirstOrNull()
 
@@ -115,6 +129,14 @@ internal class RedisServerCoroutinesCommandsImpl<K : Any, V : Any>(internal val 
     override suspend fun flushdb(flushMode: FlushMode): String? = ops.flushdb(flushMode).awaitFirstOrNull()
 
     override suspend fun flushdbAsync(): String? = ops.flushdbAsync().awaitFirstOrNull()
+    
+    override suspend fun hotkeysStart(args: HotkeysArgs): String? = ops.hotkeysStart(args).awaitFirstOrNull()
+
+    override suspend fun hotkeysStop(): String? = ops.hotkeysStop().awaitFirstOrNull()
+
+    override suspend fun hotkeysReset(): String? = ops.hotkeysReset().awaitFirstOrNull()
+
+    override suspend fun hotkeysGet(): HotkeysReply? = ops.hotkeysGet().awaitFirstOrNull()
 
     override suspend fun info(): String? = ops.info().awaitFirstOrNull()
 

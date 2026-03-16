@@ -1,20 +1,6 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.protocol;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
 
 import java.nio.charset.StandardCharsets;
@@ -23,6 +9,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import io.lettuce.core.RedisCommandExecutionException;
@@ -40,10 +27,13 @@ import io.lettuce.test.TestFutures;
  *
  * @author Mark Paluch
  */
+@Tag(UNIT_TEST)
 public class AsyncCommandUnitTests {
 
     private RedisCodec<String, String> codec = StringCodec.UTF8;
+
     private Command<String, String, String> internal;
+
     private AsyncCommand<String, String, String> sut;
 
     @BeforeEach
@@ -99,8 +89,7 @@ public class AsyncCommandUnitTests {
     @Test
     void awaitWithCancelledCommand() {
         sut.cancel();
-        assertThatThrownBy(() -> Futures.awaitOrCancel(sut, 5, TimeUnit.SECONDS))
-                .isInstanceOf(CancellationException.class);
+        assertThatThrownBy(() -> Futures.awaitOrCancel(sut, 5, TimeUnit.SECONDS)).isInstanceOf(CancellationException.class);
     }
 
     @Test
@@ -192,10 +181,12 @@ public class AsyncCommandUnitTests {
     @Test
     void outputSubclassOverride1() {
         CommandOutput<String, String, String> output = new CommandOutput<String, String, String>(codec, null) {
+
             @Override
             public String get() throws RedisException {
                 return null;
             }
+
         };
         assertThatThrownBy(() -> output.set(null)).isInstanceOf(UnsupportedOperationException.class);
     }
@@ -203,10 +194,12 @@ public class AsyncCommandUnitTests {
     @Test
     void outputSubclassOverride2() {
         CommandOutput<String, String, String> output = new CommandOutput<String, String, String>(codec, null) {
+
             @Override
             public String get() throws RedisException {
                 return null;
             }
+
         };
         assertThatThrownBy(() -> output.set(0)).isInstanceOf(UnsupportedOperationException.class);
     }
@@ -218,11 +211,14 @@ public class AsyncCommandUnitTests {
     }
 
     private enum MyKeywords implements ProtocolKeyword {
+
         DUMMY;
 
         @Override
         public byte[] getBytes() {
             return name().getBytes();
         }
+
     }
+
 }

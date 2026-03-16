@@ -1,29 +1,22 @@
-/*
- * Copyright 2019-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.sentinel;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static io.lettuce.test.settings.TestSettings.sslPort;
+import static io.lettuce.test.settings.TlsSettings.createAndSaveTestTruststore;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.HashMap;
+import java.util.Map;
 
 import javax.inject.Inject;
 
+import io.lettuce.core.resource.DnsResolvers;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -45,26 +38,42 @@ import io.lettuce.test.settings.TestSettings;
  *
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 class SentinelSslIntegrationTests extends TestSupport {
 
-    private static final File TRUSTSTORE_FILE = new File("work/truststore.jks");
+    private static File truststoreFile;
 
     private final ClientResources clientResources;
 
+    private static Map<Integer, Integer> portMap = new HashMap<>();
+    static {
+        portMap.put(26379, 26822);
+        portMap.put(6482, 8443);
+        portMap.put(6483, 8444);
+    }
+
     @Inject
     SentinelSslIntegrationTests(ClientResources clientResources) {
-        this.clientResources = clientResources.mutate()
-                .socketAddressResolver(MappingSocketAddressResolver.create(DnsResolver.jvmDefault(), hostAndPort -> {
 
-                    return HostAndPort.of(hostAndPort.getHostText(), hostAndPort.getPort() + 443);
+        this.clientResources = clientResources.mutate()
+                .socketAddressResolver(MappingSocketAddressResolver.create(DnsResolvers.UNRESOLVED, hostAndPort -> {
+                    int port = hostAndPort.getPort();
+                    if (portMap.containsKey(port)) {
+                        return HostAndPort.of(hostAndPort.getHostText(), portMap.get(port));
+                    }
+
+                    return hostAndPort;
                 })).build();
     }
 
     @BeforeAll
     static void beforeAll() {
         assumeTrue(CanConnect.to(TestSettings.host(), sslPort()), "Assume that stunnel runs on port 6443");
-        assertThat(TRUSTSTORE_FILE).exists();
+        Path path2 = createAndSaveTestTruststore("redis-standalone-sentinel-controlled",
+                Paths.get("redis-standalone-sentinel-controlled/work/tls"), "changeit");
+        truststoreFile = path2.toFile();
+        assertThat(truststoreFile).exists();
     }
 
     @Test
@@ -87,7 +96,7 @@ class SentinelSslIntegrationTests extends TestSupport {
 
         RedisURI redisURI = RedisURI.create("rediss-sentinel://" + TestSettings.host() + ":" + RedisURI.DEFAULT_SENTINEL_PORT
                 + "?sentinelMasterId=mymaster");
-        SslOptions options = SslOptions.builder().truststore(TRUSTSTORE_FILE).build();
+        SslOptions options = SslOptions.builder().truststore(truststoreFile, "changeit").build();
 
         RedisClient client = RedisClient.create(clientResources);
         client.setOptions(ClientOptions.builder().sslOptions(options).build());
@@ -98,4 +107,5 @@ class SentinelSslIntegrationTests extends TestSupport {
         connection.close();
         FastShutdown.shutdown(client);
     }
+
 }

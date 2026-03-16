@@ -1,18 +1,3 @@
-/*
- * Copyright 2020-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.test;
 
 import java.lang.reflect.Field;
@@ -25,6 +10,10 @@ import io.lettuce.core.internal.LettuceAssert;
  * Reflection test utility.
  */
 public final class ReflectionTestUtils {
+
+    private ReflectionTestUtils() {
+        // No Instances.
+    }
 
     /**
      * Get the value of the {@linkplain Field field} with the given {@code name} from the provided {@code targetObject}.
@@ -153,6 +142,29 @@ public final class ReflectionTestUtils {
         } catch (Exception ex) {
             return String.format("target of type [%s] whose toString() method threw [%s]",
                     (target != null ? target.getClass().getName() : "unknown"), ex);
+        }
+    }
+
+    /**
+     * Helper method to set private/protected fields using reflection.
+     */
+    public static void setField(Object target, String fieldName, Object value) {
+        try {
+            java.lang.reflect.Field field = ReflectionTestUtils.findField(target.getClass(), fieldName);
+            field.setAccessible(true);
+            field.set(target, value);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to set field " + fieldName, e);
+        }
+    }
+
+    public static void setField(Class<?> target, String fieldName, Object value) {
+        try {
+            java.lang.reflect.Field field = ReflectionTestUtils.findField(target, fieldName);
+            field.setAccessible(true);
+            field.set(null, value);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to set field " + fieldName, e);
         }
     }
 

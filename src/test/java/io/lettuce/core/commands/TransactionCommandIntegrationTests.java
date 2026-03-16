@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,12 +19,14 @@
  */
 package io.lettuce.core.commands;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import javax.inject.Inject;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -33,11 +39,13 @@ import io.lettuce.test.LettuceExtension;
  * @author Will Glozer
  * @author Mark Paluch
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class TransactionCommandIntegrationTests extends TestSupport {
 
     private final RedisClient client;
+
     private final RedisCommands<String, String> redis;
 
     @Inject
@@ -135,17 +143,42 @@ public class TransactionCommandIntegrationTests extends TestSupport {
     }
 
     @Test
+    void errorWhileWatchInsideMulti() {
+        assertThat(redis.multi()).isEqualTo("OK");
+        assertThat(redis.set(key, value)).isEqualTo(null);
+        assertThatThrownBy(() -> redis.watch(key)).isInstanceOf(RedisCommandExecutionException.class)
+                .hasMessageContaining("ERR WATCH inside MULTI is not allowed");
+        assertThat(redis.get(key)).isEqualTo(null);
+        TransactionResult values = redis.exec();
+        assertThat(values.wasDiscarded()).isFalse();
+        assertThat((String) values.get(0)).isEqualTo("OK");
+        assertThat((String) values.get(1)).isEqualTo(value);
+    }
+
+    @Test
+    void errorWhileMultiInsideMulti() {
+        assertThat(redis.multi()).isEqualTo("OK");
+        assertThat(redis.set(key, value)).isEqualTo(null);
+        assertThatThrownBy(redis::multi).isInstanceOf(RedisCommandExecutionException.class)
+                .hasMessageContaining("ERR MULTI calls can not be nested");
+        assertThat(redis.get(key)).isEqualTo(null);
+        TransactionResult values = redis.exec();
+        assertThat(values.wasDiscarded()).isFalse();
+    }
+
+    @Test
     void execWithoutMulti() {
-        assertThatThrownBy(redis::exec).isInstanceOf(RedisCommandExecutionException.class).hasMessageContaining(
-                "ERR EXEC without MULTI");
+        assertThatThrownBy(redis::exec).isInstanceOf(RedisCommandExecutionException.class)
+                .hasMessageContaining("ERR EXEC without MULTI");
     }
 
     @Test
     void multiCalledTwiceShouldFail() {
 
         redis.multi();
-        assertThatThrownBy(redis::multi).isInstanceOf(RedisCommandExecutionException.class).hasMessageContaining(
-                "ERR MULTI calls can not be nested");
+        assertThatThrownBy(redis::multi).isInstanceOf(RedisCommandExecutionException.class)
+                .hasMessageContaining("ERR MULTI calls can not be nested");
         redis.discard();
     }
+
 }

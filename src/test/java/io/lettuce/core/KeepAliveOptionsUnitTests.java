@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,10 +19,12 @@
  */
 package io.lettuce.core;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
 
 import java.time.Duration;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import io.lettuce.core.SocketOptions.KeepAliveOptions;
@@ -28,6 +34,7 @@ import io.lettuce.core.SocketOptions.KeepAliveOptions;
  *
  * @author Mark Paluch
  */
+@Tag(UNIT_TEST)
 class KeepAliveOptionsUnitTests {
 
     @Test
@@ -35,9 +42,9 @@ class KeepAliveOptionsUnitTests {
         KeepAliveOptions disabled = KeepAliveOptions.builder().build();
 
         assertThat(disabled).isNotNull();
-        assertThat(disabled.getIdle()).hasHours(2);
-        assertThat(disabled.getInterval()).hasSeconds(75);
-        assertThat(disabled.getCount()).isEqualTo(9);
+        assertThat(disabled.getIdle()).hasSeconds(13);
+        assertThat(disabled.getInterval()).hasSeconds(13);
+        assertThat(disabled.getCount()).isEqualTo(3);
     }
 
     @Test

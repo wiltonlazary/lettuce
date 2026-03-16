@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -19,11 +23,13 @@ import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
 import io.lettuce.core.internal.LettuceAssert;
+import io.lettuce.core.resource.ExtendedKeepAliveSupport;
 
 /**
  * Options to configure low-level socket options for the connections kept to Redis servers.
  *
  * @author Mark Paluch
+ * @author Bodong Ybd
  * @since 4.3
  */
 public class SocketOptions {
@@ -34,13 +40,17 @@ public class SocketOptions {
 
     public static final Duration DEFAULT_CONNECT_TIMEOUT_DURATION = Duration.ofSeconds(DEFAULT_CONNECT_TIMEOUT);
 
-    public static final boolean DEFAULT_SO_KEEPALIVE = false;
+    public static final boolean DEFAULT_SO_KEEPALIVE = true;
+
+    public static final boolean DEFAULT_TCP_USER_TIMEOUT_ENABLED = false;
 
     public static final boolean DEFAULT_SO_NO_DELAY = true;
 
     private final Duration connectTimeout;
 
     private final KeepAliveOptions keepAlive;
+
+    private final TcpUserTimeoutOptions tcpUserTimeout;
 
     private final boolean extendedKeepAlive;
 
@@ -52,6 +62,7 @@ public class SocketOptions {
         this.keepAlive = builder.keepAlive;
         this.extendedKeepAlive = builder.extendedKeepAlive;
         this.tcpNoDelay = builder.tcpNoDelay;
+        this.tcpUserTimeout = builder.tcpUserTimeout;
     }
 
     protected SocketOptions(SocketOptions original) {
@@ -59,6 +70,7 @@ public class SocketOptions {
         this.keepAlive = original.getKeepAlive();
         this.extendedKeepAlive = original.isExtendedKeepAlive();
         this.tcpNoDelay = original.isTcpNoDelay();
+        this.tcpUserTimeout = original.getTcpUserTimeout();
     }
 
     /**
@@ -98,9 +110,12 @@ public class SocketOptions {
 
         private KeepAliveOptions keepAlive = KeepAliveOptions.builder().enable(DEFAULT_SO_KEEPALIVE).build();
 
+        private TcpUserTimeoutOptions tcpUserTimeout = TcpUserTimeoutOptions.builder().enable(DEFAULT_TCP_USER_TIMEOUT_ENABLED)
+                .build();
+
         private boolean tcpNoDelay = DEFAULT_SO_NO_DELAY;
 
-        private boolean extendedKeepAlive = false;
+        private boolean extendedKeepAlive = ExtendedKeepAliveSupport.isSupported();
 
         private Builder() {
         }
@@ -115,7 +130,7 @@ public class SocketOptions {
          */
         public Builder connectTimeout(Duration connectTimeout) {
 
-            LettuceAssert.notNull(connectTimeout, "Connection timeout must not be null");
+            LettuceAssert.notNull(connectTimeout, "Connect timeout must not be null");
             LettuceAssert.isTrue(connectTimeout.toNanos() > 0, "Connect timeout must be greater 0");
 
             this.connectTimeout = connectTimeout;
@@ -135,13 +150,16 @@ public class SocketOptions {
         public Builder connectTimeout(long connectTimeout, TimeUnit connectTimeoutUnit) {
 
             LettuceAssert.isTrue(connectTimeout > 0, "Connect timeout must be greater 0");
-            LettuceAssert.notNull(connectTimeoutUnit, "TimeUnit must not be null");
+            LettuceAssert.notNull(connectTimeoutUnit, "Connect timeout unit must not be null");
 
             return connectTimeout(Duration.ofNanos(connectTimeoutUnit.toNanos(connectTimeout)));
         }
 
         /**
-         * Set whether to enable TCP keepalive. Defaults to {@code false}. See {@link #DEFAULT_SO_KEEPALIVE}.
+         * Set whether to enable TCP keepalive. Defaults to {@code true}. See {@link #DEFAULT_SO_KEEPALIVE}.
+         * <p>
+         * Note: Using this method disables extended keep-alive options. To use extended keep-alive options (custom idle,
+         * interval, count), use {@link #keepAlive(KeepAliveOptions)} instead.
          *
          * @param keepAlive whether to enable or disable the TCP keepalive.
          * @return {@code this}
@@ -156,7 +174,7 @@ public class SocketOptions {
         }
 
         /**
-         * Configure TCP keepalive. Defaults to disabled. See {@link #DEFAULT_SO_KEEPALIVE}.
+         * Configure TCP keepalive. Defaults to enabled. See {@link #DEFAULT_SO_KEEPALIVE}.
          *
          * @param keepAlive whether to enable or disable the TCP keepalive.
          * @return {@code this}
@@ -170,6 +188,23 @@ public class SocketOptions {
 
             this.keepAlive = keepAlive;
             this.extendedKeepAlive = true;
+
+            return this;
+        }
+
+        /**
+         * Configure TCP User Timeout. Defaults to disabled. See {@link #DEFAULT_TCP_USER_TIMEOUT_ENABLED}.
+         *
+         * @param tcpUserTimeout the TCP User Timeout options.
+         * @return {@code this}
+         * @since 6.2.7
+         * @see TcpUserTimeoutOptions
+         */
+        public Builder tcpUserTimeout(TcpUserTimeoutOptions tcpUserTimeout) {
+
+            LettuceAssert.notNull(tcpUserTimeout, "TcpUserTimeout options must not be null");
+
+            this.tcpUserTimeout = tcpUserTimeout;
 
             return this;
         }
@@ -265,22 +300,35 @@ public class SocketOptions {
         return tcpNoDelay;
     }
 
+    public boolean isEnableTcpUserTimeout() {
+        return tcpUserTimeout.isEnabled();
+    }
+
+    public TcpUserTimeoutOptions getTcpUserTimeout() {
+        return tcpUserTimeout;
+    }
+
     /**
      * Extended Keep-Alive options (idle, interval, count). Extended options should not be used in code intended to be portable
      * as options are applied only when using NIO sockets with Java 11 or newer epoll sockets, or io_uring sockets. Not
      * applicable for kqueue in general or NIO sockets using Java 10 or earlier.
      * <p>
      * The time granularity of {@link #getIdle()} and {@link #getInterval()} is seconds.
+     * <p>
+     * Default values are chosen so that {@code idle + (interval × count)} is close to
+     * {@link RedisURI#DEFAULT_TIMEOUT_DURATION}. {@link TcpUserTimeoutOptions#DEFAULT_TCP_USER_TIMEOUT} is derived from these
+     * values.
      *
      * @since 6.1
+     * @see TcpUserTimeoutOptions#DEFAULT_TCP_USER_TIMEOUT
      */
     public static class KeepAliveOptions {
 
-        public static final int DEFAULT_COUNT = 9;
+        public static final int DEFAULT_COUNT = 3;
 
-        public static final Duration DEFAULT_IDLE = Duration.ofHours(2);
+        public static final Duration DEFAULT_IDLE = Duration.ofSeconds(13);
 
-        public static final Duration DEFAULT_INTERVAL = Duration.ofSeconds(75);
+        public static final Duration DEFAULT_INTERVAL = Duration.ofSeconds(13);
 
         private final int count;
 
@@ -324,8 +372,8 @@ public class SocketOptions {
             }
 
             /**
-             * Set the the maximum number of keepalive probes TCP should send before dropping the connection. Defaults to
-             * {@code 9}. See also {@link #DEFAULT_COUNT} and {@code TCP_KEEPCNT}.
+             * Set the maximum number of keepalive probes TCP should send before dropping the connection. Defaults to
+             * {@link #DEFAULT_COUNT}. See also {@code TCP_KEEPCNT}.
              *
              * @param count the maximum number of keepalive probes TCP
              * @return {@code this}
@@ -339,7 +387,7 @@ public class SocketOptions {
             }
 
             /**
-             * Enable TCP keepalive. Defaults to disabled. See {@link #DEFAULT_SO_KEEPALIVE}.
+             * Enable TCP keepalive. Defaults to enabled. See {@link #DEFAULT_SO_KEEPALIVE}.
              *
              * @return {@code this}
              * @see java.net.SocketOptions#SO_KEEPALIVE
@@ -349,7 +397,7 @@ public class SocketOptions {
             }
 
             /**
-             * Disable TCP keepalive. Defaults to disabled. See {@link #DEFAULT_SO_KEEPALIVE}.
+             * Disable TCP keepalive. Defaults to enabled. See {@link #DEFAULT_SO_KEEPALIVE}.
              *
              * @return {@code this}
              * @see java.net.SocketOptions#SO_KEEPALIVE
@@ -359,7 +407,7 @@ public class SocketOptions {
             }
 
             /**
-             * Enable TCP keepalive. Defaults to {@code false}. See {@link #DEFAULT_SO_KEEPALIVE}.
+             * Enable TCP keepalive. Defaults to {@code true}. See {@link #DEFAULT_SO_KEEPALIVE}.
              *
              * @param enabled whether to enable TCP keepalive.
              * @return {@code this}
@@ -373,7 +421,7 @@ public class SocketOptions {
 
             /**
              * The time the connection needs to remain idle before TCP starts sending keepalive probes if keepalive is enabled.
-             * Defaults to {@code 2 hours}. See also @link {@link #DEFAULT_IDLE} and {@code TCP_KEEPIDLE}.
+             * Defaults to {@link #DEFAULT_IDLE}. See also {@code TCP_KEEPIDLE}.
              * <p>
              * The time granularity of is seconds.
              *
@@ -383,15 +431,15 @@ public class SocketOptions {
             public KeepAliveOptions.Builder idle(Duration idle) {
 
                 LettuceAssert.notNull(idle, "Idle time must not be null");
-                LettuceAssert.isTrue(!idle.isNegative(), "Idle time must not be begative");
+                LettuceAssert.isTrue(!idle.isNegative(), "Idle time must not be negative");
 
                 this.idle = idle;
                 return this;
             }
 
             /**
-             * The time between individual keepalive probes. Defaults to {@code 75 second}. See also {@link #DEFAULT_INTERVAL}
-             * and {@code TCP_KEEPINTVL}.
+             * The time between individual keepalive probes. Defaults to {@link #DEFAULT_INTERVAL}. See also
+             * {@code TCP_KEEPINTVL}.
              * <p>
              * The time granularity of is seconds.
              *
@@ -400,8 +448,8 @@ public class SocketOptions {
              */
             public KeepAliveOptions.Builder interval(Duration interval) {
 
-                LettuceAssert.notNull(interval, "Idle time must not be null");
-                LettuceAssert.isTrue(!interval.isNegative(), "Idle time must not be begative");
+                LettuceAssert.notNull(interval, "Interval time must not be null");
+                LettuceAssert.isTrue(!interval.isNegative(), "Interval time must not be negative");
 
                 this.interval = interval;
                 return this;
@@ -438,8 +486,8 @@ public class SocketOptions {
         }
 
         /**
-         * Returns the maximum number of keepalive probes TCP should send before dropping the connection. Defaults to {@code 9}.
-         * See also {@link #DEFAULT_COUNT} and {@code TCP_KEEPCNT}.
+         * Returns the maximum number of keepalive probes TCP should send before dropping the connection. Defaults to
+         * {@link #DEFAULT_COUNT}. See also {@code TCP_KEEPCNT}.
          *
          * @return the maximum number of keepalive probes TCP should send before dropping the connection.
          */
@@ -459,7 +507,7 @@ public class SocketOptions {
 
         /**
          * The time the connection needs to remain idle before TCP starts sending keepalive probes if keepalive is enabled.
-         * Defaults to {@code 2 hours}. See also @link {@link #DEFAULT_IDLE} and {@code TCP_KEEPIDLE}.
+         * Defaults to {@link #DEFAULT_IDLE}. See also {@code TCP_KEEPIDLE}.
          * <p>
          * The time granularity of is seconds.
          *
@@ -470,8 +518,7 @@ public class SocketOptions {
         }
 
         /**
-         * The time between individual keepalive probes. Defaults to {@code 1 second}. See also {@link #DEFAULT_INTERVAL} and
-         * {@code TCP_KEEPINTVL}.
+         * The time between individual keepalive probes. Defaults to {@link #DEFAULT_INTERVAL}. See also {@code TCP_KEEPINTVL}.
          * <p>
          * The time granularity of is seconds.
          *
@@ -479,6 +526,148 @@ public class SocketOptions {
          */
         public Duration getInterval() {
             return interval;
+        }
+
+    }
+
+    /**
+     * TCP_USER_TIMEOUT comes from <a href="https://datatracker.ietf.org/doc/html/rfc5482">RFC5482</a> , configuring this
+     * parameter can allow the user TCP to initiate a reconnection to solve this problem when the network is abnormal.
+     * <p>
+     * The timeout is currently only supported with epoll and io_uring native transports.
+     *
+     * @since 6.2.7
+     */
+    public static class TcpUserTimeoutOptions {
+
+        /**
+         * Recommended default: TCP_KEEPIDLE + TCP_KEEPINTVL * TCP_KEEPCNT.
+         */
+        public static final Duration DEFAULT_TCP_USER_TIMEOUT = KeepAliveOptions.DEFAULT_IDLE
+                .plus(KeepAliveOptions.DEFAULT_INTERVAL.multipliedBy(KeepAliveOptions.DEFAULT_COUNT));
+
+        private final Duration tcpUserTimeout;
+
+        private final boolean enabled;
+
+        private TcpUserTimeoutOptions(TcpUserTimeoutOptions.Builder builder) {
+
+            this.tcpUserTimeout = builder.tcpUserTimeout;
+            this.enabled = builder.enabled;
+        }
+
+        /**
+         * Returns a new {@link TcpUserTimeoutOptions.Builder} to construct {@link TcpUserTimeoutOptions}.
+         *
+         * @return a new {@link TcpUserTimeoutOptions.Builder} to construct {@link TcpUserTimeoutOptions}.
+         */
+        public static TcpUserTimeoutOptions.Builder builder() {
+            return new TcpUserTimeoutOptions.Builder();
+        }
+
+        /**
+         * Builder class for {@link TcpUserTimeoutOptions}.
+         */
+        public static class Builder {
+
+            private Duration tcpUserTimeout = DEFAULT_TCP_USER_TIMEOUT;
+
+            private boolean enabled = DEFAULT_TCP_USER_TIMEOUT_ENABLED;
+
+            private Builder() {
+            }
+
+            /**
+             * Enable TCP User Timeout. Defaults to disabled. See {@link #DEFAULT_TCP_USER_TIMEOUT_ENABLED}.
+             *
+             * @return {@code this}
+             */
+            public TcpUserTimeoutOptions.Builder enable() {
+                return enable(true);
+            }
+
+            /**
+             * Disable TCP User Timeout. Defaults to disabled. See {@link #DEFAULT_TCP_USER_TIMEOUT_ENABLED}.
+             *
+             * @return {@code this}
+             */
+            public TcpUserTimeoutOptions.Builder disable() {
+                return enable(false);
+            }
+
+            /**
+             * Enable or disable TCP User Timeout. Defaults to disabled. See {@link #DEFAULT_TCP_USER_TIMEOUT_ENABLED}.
+             *
+             * @param enabled whether to enable TCP User Timeout.
+             * @return {@code this}
+             */
+            public TcpUserTimeoutOptions.Builder enable(boolean enabled) {
+
+                this.enabled = enabled;
+                return this;
+            }
+
+            /**
+             * The TCP User Timeout. Defaults to {@link #DEFAULT_TCP_USER_TIMEOUT}.
+             * <p>
+             * The time granularity of is seconds.
+             *
+             * @param tcpUserTimeout connection interval time, must be greater {@literal 0}
+             * @return {@code this}
+             */
+            public TcpUserTimeoutOptions.Builder tcpUserTimeout(Duration tcpUserTimeout) {
+
+                LettuceAssert.notNull(tcpUserTimeout, "Duration must not be null");
+                LettuceAssert.isTrue(!tcpUserTimeout.isNegative(), "Duration must not be negative");
+
+                this.tcpUserTimeout = tcpUserTimeout;
+                return this;
+            }
+
+            /**
+             * Create a new instance of {@link TcpUserTimeoutOptions}
+             *
+             * @return new instance of {@link TcpUserTimeoutOptions}
+             */
+            public TcpUserTimeoutOptions build() {
+                return new TcpUserTimeoutOptions(this);
+            }
+
+        }
+
+        /**
+         * Returns a builder to create new {@link TcpUserTimeoutOptions} whose settings are replicated from the current
+         * {@link TcpUserTimeoutOptions}.
+         *
+         * @return a {@link TcpUserTimeoutOptions.Builder} to create new {@link TcpUserTimeoutOptions} whose settings are
+         *         replicated from the current {@link TcpUserTimeoutOptions}
+         */
+        public TcpUserTimeoutOptions.Builder mutate() {
+
+            TcpUserTimeoutOptions.Builder builder = builder();
+
+            builder.enabled = this.isEnabled();
+            builder.tcpUserTimeout = this.getTcpUserTimeout();
+
+            return builder;
+        }
+
+        /**
+         * Returns whether to enable TCP User Timeout.
+         *
+         * @return whether to enable TCP User Timeout
+         */
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        /**
+         * Returns the actual timeout.
+         *
+         * @return the actual timeout.
+         */
+        public Duration getTcpUserTimeout() {
+            return tcpUserTimeout;
         }
 
     }

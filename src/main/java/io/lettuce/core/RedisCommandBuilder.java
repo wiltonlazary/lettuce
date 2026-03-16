@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,19 +19,6 @@
  */
 package io.lettuce.core;
 
-import static io.lettuce.core.internal.LettuceStrings.*;
-import static io.lettuce.core.protocol.CommandKeyword.*;
-import static io.lettuce.core.protocol.CommandType.*;
-import static io.lettuce.core.protocol.CommandType.COPY;
-import static io.lettuce.core.protocol.CommandType.SAVE;
-
-import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
 import io.lettuce.core.Range.Boundary;
 import io.lettuce.core.XReadArgs.StreamOffset;
 import io.lettuce.core.codec.RedisCodec;
@@ -36,13 +27,29 @@ import io.lettuce.core.internal.LettuceAssert;
 import io.lettuce.core.models.stream.ClaimedMessages;
 import io.lettuce.core.models.stream.PendingMessage;
 import io.lettuce.core.models.stream.PendingMessages;
+import io.lettuce.core.models.stream.StreamEntryDeletionResult;
 import io.lettuce.core.output.*;
+import io.lettuce.core.output.StreamEntryDeletionResultListOutput;
 import io.lettuce.core.protocol.BaseRedisCommandBuilder;
 import io.lettuce.core.protocol.Command;
 import io.lettuce.core.protocol.CommandArgs;
 import io.lettuce.core.protocol.CommandKeyword;
 import io.lettuce.core.protocol.CommandType;
 import io.lettuce.core.protocol.RedisCommand;
+
+import java.nio.ByteBuffer;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static io.lettuce.core.internal.LettuceStrings.string;
+import static io.lettuce.core.protocol.CommandKeyword.*;
+import static io.lettuce.core.protocol.CommandType.*;
+import static io.lettuce.core.protocol.CommandType.COPY;
+import static io.lettuce.core.protocol.CommandType.DEL;
+import static io.lettuce.core.protocol.CommandType.SAVE;
 
 /**
  * @param <K>
@@ -52,19 +59,12 @@ import io.lettuce.core.protocol.RedisCommand;
  * @author Tugdual Grall
  * @author dengliming
  * @author Mikhael Sokolov
+ * @author Tihomir Mateev
+ * @author Ali Takavci
+ * @author Seonghwan Lee
  */
 @SuppressWarnings({ "unchecked", "varargs" })
 class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
-
-    private static final String MUST_NOT_CONTAIN_NULL_ELEMENTS = "must not contain null elements";
-
-    private static final String MUST_NOT_BE_EMPTY = "must not be empty";
-
-    private static final String MUST_NOT_BE_NULL = "must not be null";
-
-    private static final byte[] MINUS_BYTES = { '-' };
-
-    private static final byte[] PLUS_BYTES = { '+' };
 
     RedisCommandBuilder(RedisCodec<K, V> codec) {
         super(codec);
@@ -205,7 +205,6 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
 
     Command<K, V, String> auth(CharSequence password) {
         LettuceAssert.notNull(password, "Password " + MUST_NOT_BE_NULL);
-        LettuceAssert.notEmpty(password, "Password " + MUST_NOT_BE_EMPTY);
 
         char[] chars = new char[password.length()];
         for (int i = 0; i < password.length(); i++) {
@@ -216,7 +215,6 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
 
     Command<K, V, String> auth(char[] password) {
         LettuceAssert.notNull(password, "Password " + MUST_NOT_BE_NULL);
-        LettuceAssert.isTrue(password.length > 0, "Password " + MUST_NOT_BE_EMPTY);
 
         CommandArgs<K, V> args = new CommandArgs<>(codec).add(password);
         return createCommand(AUTH, new StatusOutput<>(codec), args);
@@ -226,7 +224,6 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         LettuceAssert.notNull(username, "Username " + MUST_NOT_BE_NULL);
         LettuceAssert.isTrue(!username.isEmpty(), "Username " + MUST_NOT_BE_EMPTY);
         LettuceAssert.notNull(password, "Password " + MUST_NOT_BE_NULL);
-        LettuceAssert.notEmpty(password, "Password " + MUST_NOT_BE_EMPTY);
 
         char[] chars = new char[password.length()];
         for (int i = 0; i < password.length(); i++) {
@@ -239,7 +236,6 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         LettuceAssert.notNull(username, "Username " + MUST_NOT_BE_NULL);
         LettuceAssert.isTrue(!username.isEmpty(), "Username " + MUST_NOT_BE_EMPTY);
         LettuceAssert.notNull(password, "Password " + MUST_NOT_BE_NULL);
-        LettuceAssert.isTrue(password.length > 0, "Password " + MUST_NOT_BE_EMPTY);
 
         CommandArgs<K, V> args = new CommandArgs<>(codec).add(username).add(password);
         return createCommand(AUTH, new StatusOutput<>(codec), args);
@@ -325,6 +321,45 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
 
         CommandArgs<K, V> args = new CommandArgs<>(codec);
         args.add(XOR).addKey(destination).addKeys(keys);
+        return createCommand(BITOP, new IntegerOutput<>(codec), args);
+    }
+
+    Command<K, V, Long> bitopDiff(K destination, K sourceKey, K... keys) {
+        LettuceAssert.notNull(destination, "Destination " + MUST_NOT_BE_NULL);
+        LettuceAssert.notNull(sourceKey, "Source key " + MUST_NOT_BE_NULL);
+        notEmpty(keys);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec);
+        args.add(DIFF).addKey(destination).addKey(sourceKey).addKeys(keys);
+        return createCommand(BITOP, new IntegerOutput<>(codec), args);
+    }
+
+    Command<K, V, Long> bitopDiff1(K destination, K sourceKey, K... keys) {
+        LettuceAssert.notNull(destination, "Destination " + MUST_NOT_BE_NULL);
+        LettuceAssert.notNull(sourceKey, "Source key " + MUST_NOT_BE_NULL);
+        notEmpty(keys);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec);
+        args.add(DIFF1).addKey(destination).addKey(sourceKey).addKeys(keys);
+        return createCommand(BITOP, new IntegerOutput<>(codec), args);
+    }
+
+    Command<K, V, Long> bitopAndor(K destination, K sourceKey, K... keys) {
+        LettuceAssert.notNull(destination, "Destination " + MUST_NOT_BE_NULL);
+        LettuceAssert.notNull(sourceKey, "Source key " + MUST_NOT_BE_NULL);
+        notEmpty(keys);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec);
+        args.add(ANDOR).addKey(destination).addKey(sourceKey).addKeys(keys);
+        return createCommand(BITOP, new IntegerOutput<>(codec), args);
+    }
+
+    Command<K, V, Long> bitopOne(K destination, K... keys) {
+        LettuceAssert.notNull(destination, "Destination " + MUST_NOT_BE_NULL);
+        notEmpty(keys);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec);
+        args.add(ONE).addKey(destination).addKeys(keys);
         return createCommand(BITOP, new IntegerOutput<>(codec), args);
     }
 
@@ -478,6 +513,19 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return createCommand(CLIENT, new StatusOutput<>(codec), args);
     }
 
+    Command<K, V, String> clientList(ClientListArgs clientListArgs) {
+        LettuceAssert.notNull(clientListArgs, "ClientListArgs " + MUST_NOT_BE_NULL);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(LIST);
+        clientListArgs.build(args);
+        return createCommand(CLIENT, new StatusOutput<>(codec), args);
+    }
+
+    Command<K, V, String> clientInfo() {
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(CommandKeyword.INFO);
+        return createCommand(CLIENT, new StatusOutput<>(codec), args);
+    }
+
     Command<K, V, String> clientNoEvict(boolean on) {
         CommandArgs<K, V> args = new CommandArgs<>(codec).add("NO-EVICT").add(on ? ON : OFF);
         return createCommand(CLIENT, new StatusOutput<>(codec), args);
@@ -500,12 +548,23 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return createCommand(CLIENT, new StatusOutput<>(codec), args);
     }
 
+    Command<K, V, String> clientSetinfo(String key, String value) {
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(SETINFO).add(key).add(value);
+        return createCommand(CLIENT, new StatusOutput<>(codec), args);
+    }
+
     Command<K, V, String> clientTracking(TrackingArgs trackingArgs) {
         LettuceAssert.notNull(trackingArgs, "TrackingArgs " + MUST_NOT_BE_NULL);
 
         CommandArgs<K, V> args = new CommandArgs<>(codec).add(TRACKING);
         trackingArgs.build(args);
         return createCommand(CLIENT, new StatusOutput<>(codec), args);
+    }
+
+    Command<K, V, TrackingInfo> clientTrackinginfo() {
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(TRACKINGINFO);
+
+        return new Command<>(CLIENT, new ComplexOutput<>(codec, TrackingInfoParser.INSTANCE), args);
     }
 
     Command<K, V, Long> clientUnblock(long id, UnblockType type) {
@@ -579,10 +638,16 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
     }
 
     Command<K, V, String> clusterFailover(boolean force) {
+        return clusterFailover(force, false);
+    }
+
+    Command<K, V, String> clusterFailover(boolean force, boolean takeOver) {
 
         CommandArgs<K, V> args = new CommandArgs<>(codec).add(FAILOVER);
         if (force) {
             args.add(FORCE);
+        } else if (takeOver) {
+            args.add(TAKEOVER);
         }
         return createCommand(CLUSTER, new StatusOutput<>(codec), args);
     }
@@ -606,7 +671,7 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
     }
 
     Command<K, V, String> clusterInfo() {
-        CommandArgs<K, V> args = new CommandArgs<>(codec).add(INFO);
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(CommandType.INFO);
 
         return createCommand(CLUSTER, new StatusOutput<>(codec), args);
     }
@@ -626,6 +691,12 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
 
     Command<K, V, String> clusterMyId() {
         CommandArgs<K, V> args = new CommandArgs<>(codec).add(MYID);
+
+        return createCommand(CLUSTER, new StatusOutput<>(codec), args);
+    }
+
+    Command<K, V, String> clusterMyShardId() {
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(MYSHARDID);
 
         return createCommand(CLUSTER, new StatusOutput<>(codec), args);
     }
@@ -732,7 +803,7 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         LettuceAssert.noNullElements(commands, "Commands " + MUST_NOT_CONTAIN_NULL_ELEMENTS);
 
         CommandArgs<String, String> args = new CommandArgs<>(StringCodec.UTF8);
-        args.add(INFO);
+        args.add(CommandKeyword.INFO);
 
         for (String command : commands) {
             args.add(command);
@@ -757,7 +828,7 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         for (String parameter : parameters) {
             args.add(parameter);
         }
-        return Command.class.cast(new Command(CONFIG, new MapOutput<>(StringCodec.UTF8), args));
+        return Command.class.cast(new Command<>(CONFIG, new MapOutput<>(StringCodec.UTF8), args));
     }
 
     Command<K, V, String> configResetstat() {
@@ -869,6 +940,15 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return createCommand(DEL, new IntegerOutput<>(codec), args);
     }
 
+    Command<K, V, Long> delex(K key, CompareCondition<V> condition) {
+        notNullKey(key);
+        LettuceAssert.notNull(condition, "ValueCondition " + MUST_NOT_BE_NULL);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+        condition.build(args);
+        return createCommand(DELEX, new IntegerOutput<>(codec), args);
+    }
+
     Command<K, V, String> discard() {
         return createCommand(DISCARD, new StatusOutput<>(codec));
     }
@@ -952,6 +1032,89 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return createCommand(EXPIRE, new BooleanOutput<>(codec), args);
     }
 
+    Command<K, V, List<Long>> hexpire(K key, long seconds, ExpireArgs expireArgs, K... fields) {
+        keyAndFieldsProvided(key, fields);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).add(seconds);
+
+        if (expireArgs != null) {
+            expireArgs.build(args);
+        }
+
+        args.add(FIELDS).add(fields.length).addKeys(fields);
+
+        return createCommand(HEXPIRE, new IntegerListOutput<>(codec), args);
+    }
+
+    Command<K, V, List<Long>> hexpireat(K key, long seconds, ExpireArgs expireArgs, K... fields) {
+        keyAndFieldsProvided(key, fields);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).add(seconds);
+
+        if (expireArgs != null) {
+            expireArgs.build(args);
+        }
+
+        args.add(FIELDS).add(fields.length).addKeys(fields);
+
+        return createCommand(HEXPIREAT, new IntegerListOutput<>(codec), args);
+    }
+
+    Command<K, V, List<Long>> httl(K key, K... fields) {
+        keyAndFieldsProvided(key, fields);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+        args.add(FIELDS).add(fields.length).addKeys(fields);
+
+        return createCommand(HTTL, new IntegerListOutput<>(codec), args);
+    }
+
+    Command<K, V, List<Long>> hpexpire(K key, long milliseconds, ExpireArgs expireArgs, K... fields) {
+        keyAndFieldsProvided(key, fields);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).add(milliseconds);
+
+        if (expireArgs != null) {
+            expireArgs.build(args);
+        }
+
+        args.add(FIELDS).add(fields.length).addKeys(fields);
+
+        return createCommand(HPEXPIRE, new IntegerListOutput<>(codec), args);
+    }
+
+    Command<K, V, List<Long>> hpexpireat(K key, long timestamp, ExpireArgs expireArgs, K... fields) {
+        keyAndFieldsProvided(key, fields);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).add(timestamp);
+
+        if (expireArgs != null) {
+            expireArgs.build(args);
+        }
+
+        args.add(FIELDS).add(fields.length).addKeys(fields);
+
+        return createCommand(HPEXPIREAT, new IntegerListOutput<>(codec), args);
+    }
+
+    Command<K, V, List<Long>> hpexpiretime(K key, K... fields) {
+        keyAndFieldsProvided(key, fields);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+        args.add(FIELDS).add(fields.length).addKeys(fields);
+
+        return createCommand(HPEXPIRETIME, new IntegerListOutput<>(codec), args);
+    }
+
+    Command<K, V, List<Long>> hpttl(K key, K... fields) {
+        keyAndFieldsProvided(key, fields);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+        args.add(FIELDS).add(fields.length).addKeys(fields);
+
+        return createCommand(HPTTL, new IntegerListOutput<>(codec), args);
+    }
+
     Command<K, V, Boolean> expireat(K key, long timestamp, ExpireArgs expireArgs) {
         notNullKey(key);
 
@@ -969,6 +1132,15 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
 
         CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
         return createCommand(EXPIRETIME, new IntegerOutput<>(codec), args);
+    }
+
+    Command<K, V, List<Long>> hexpiretime(K key, K... fields) {
+        notNullKey(key);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+        args.add(FIELDS).add(fields.length).addKeys(fields);
+
+        return createCommand(HEXPIRETIME, new IntegerListOutput<>(codec), args);
     }
 
     Command<K, V, String> flushall() {
@@ -989,6 +1161,94 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         LettuceAssert.notNull(flushMode, "FlushMode " + MUST_NOT_BE_NULL);
 
         return createCommand(FLUSHDB, new StatusOutput<>(codec), new CommandArgs<>(codec).add(flushMode));
+    }
+
+    Command<K, V, String> hotkeysStart(HotkeysArgs args) {
+        LettuceAssert.notNull(args, "HotkeysArgs " + MUST_NOT_BE_NULL);
+
+        CommandArgs<K, V> cmdArgs = new CommandArgs<>(codec).add(START);
+        args.build(cmdArgs);
+        return createCommand(HOTKEYS, new StatusOutput<>(codec), cmdArgs);
+    }
+
+    Command<K, V, String> hotkeysStop() {
+        return createCommand(HOTKEYS, new StatusOutput<>(codec), new CommandArgs<>(codec).add(STOP));
+    }
+
+    Command<K, V, String> hotkeysReset() {
+        return createCommand(HOTKEYS, new StatusOutput<>(codec), new CommandArgs<>(codec).add(RESET));
+    }
+
+    Command<K, V, HotkeysReply> hotkeysGet() {
+        return new Command<>(HOTKEYS, new ComplexOutput<>(codec, HotkeysReplyParser.INSTANCE),
+                new CommandArgs<>(codec).add("GET"));
+    }
+
+    <T> Command<K, V, T> fcall(String function, ScriptOutputType type, boolean readonly, K[] keys, V... values) {
+        LettuceAssert.notEmpty(function, "Function " + MUST_NOT_BE_EMPTY);
+        LettuceAssert.notNull(type, "ScriptOutputType " + MUST_NOT_BE_NULL);
+        LettuceAssert.notNull(keys, "Keys " + MUST_NOT_BE_NULL);
+        LettuceAssert.notNull(values, "Values " + MUST_NOT_BE_NULL);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec);
+        args.add(function).add(keys.length).addKeys(keys).addValues(values);
+        CommandOutput<K, V, T> output = newScriptOutput(codec, type);
+
+        return createCommand(readonly ? FCALL_RO : FCALL, output, args);
+    }
+
+    Command<K, V, String> functionLoad(byte[] functionCode, boolean replace) {
+        LettuceAssert.notNull(functionCode, "Function code " + MUST_NOT_BE_NULL);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(LOAD);
+        if (replace) {
+            args.add(REPLACE);
+        }
+        args.add(functionCode);
+
+        return createCommand(FUNCTION, new StatusOutput<>(codec), args);
+    }
+
+    Command<K, V, byte[]> functionDump() {
+        return createCommand(FUNCTION, new ByteArrayOutput<>(codec), new CommandArgs<>(codec).add(DUMP));
+    }
+
+    Command<K, V, String> functionRestore(byte dump[], FunctionRestoreMode mode) {
+
+        LettuceAssert.notNull(dump, "Function dump " + MUST_NOT_BE_NULL);
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(RESTORE).add(dump);
+
+        if (mode != null) {
+            args.add(mode);
+        }
+
+        return createCommand(FUNCTION, new StatusOutput<>(codec), args);
+    }
+
+    Command<K, V, String> functionFlush(FlushMode mode) {
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(FLUSH);
+
+        if (mode != null) {
+            args.add(mode);
+        }
+
+        return createCommand(FUNCTION, new StatusOutput<>(codec), args);
+    }
+
+    Command<K, V, String> functionKill() {
+        return createCommand(FUNCTION, new StatusOutput<>(codec), new CommandArgs<>(codec).add(KILL));
+    }
+
+    Command<K, V, List<Map<String, Object>>> functionList(String pattern) {
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(LIST);
+
+        if (pattern != null) {
+            args.add("LIBRARYNAME").add(pattern);
+        }
+
+        return createCommand(FUNCTION, (CommandOutput) new ObjectOutput<>(StringCodec.UTF8), args);
     }
 
     Command<K, V, Long> geoadd(K key, double longitude, double latitude, V member, GeoAddArgs geoArgs) {
@@ -1268,9 +1528,7 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
     }
 
     Command<K, V, Long> hdel(K key, K... fields) {
-        notNullKey(key);
-        LettuceAssert.notNull(fields, "Fields " + MUST_NOT_BE_NULL);
-        LettuceAssert.notEmpty(fields, "Fields " + MUST_NOT_BE_EMPTY);
+        keyAndFieldsProvided(key, fields);
 
         CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).addKeys(fields);
         return createCommand(HDEL, new IntegerOutput<>(codec), args);
@@ -1362,18 +1620,15 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
     }
 
     Command<K, V, List<V>> hmget(K key, K... fields) {
-        notNullKey(key);
-        LettuceAssert.notNull(fields, "Fields " + MUST_NOT_BE_NULL);
-        LettuceAssert.notEmpty(fields, "Fields " + MUST_NOT_BE_EMPTY);
+        keyAndFieldsProvided(key, fields);
 
         CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).addKeys(fields);
         return createCommand(HMGET, new ValueListOutput<>(codec), args);
     }
 
     Command<K, V, Long> hmget(ValueStreamingChannel<V> channel, K key, K... fields) {
-        notNullKey(key);
-        LettuceAssert.notNull(fields, "Fields " + MUST_NOT_BE_NULL);
-        LettuceAssert.notEmpty(fields, "Fields " + MUST_NOT_BE_EMPTY);
+        keyAndFieldsProvided(key, fields);
+
         notNull(channel);
 
         CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).addKeys(fields);
@@ -1381,9 +1636,8 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
     }
 
     Command<K, V, Long> hmget(KeyValueStreamingChannel<K, V> channel, K key, K... fields) {
-        notNullKey(key);
-        LettuceAssert.notNull(fields, "Fields " + MUST_NOT_BE_NULL);
-        LettuceAssert.notEmpty(fields, "Fields " + MUST_NOT_BE_EMPTY);
+        keyAndFieldsProvided(key, fields);
+
         notNull(channel);
 
         CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).addKeys(fields);
@@ -1391,9 +1645,7 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
     }
 
     Command<K, V, List<KeyValue<K, V>>> hmgetKeyValue(K key, K... fields) {
-        notNullKey(key);
-        LettuceAssert.notNull(fields, "Fields " + MUST_NOT_BE_NULL);
-        LettuceAssert.notEmpty(fields, "Fields " + MUST_NOT_BE_EMPTY);
+        keyAndFieldsProvided(key, fields);
 
         CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).addKeys(fields);
         return createCommand(HMGET, new KeyValueListOutput<>(codec, Arrays.asList(fields)), args);
@@ -1442,16 +1694,34 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return hscan(key, ScanCursor.INITIAL, null);
     }
 
+    Command<K, V, KeyScanCursor<K>> hscanNovalues(K key) {
+        notNullKey(key);
+
+        return hscanNovalues(key, ScanCursor.INITIAL, null);
+    }
+
     Command<K, V, MapScanCursor<K, V>> hscan(K key, ScanCursor scanCursor) {
         notNullKey(key);
 
         return hscan(key, scanCursor, null);
     }
 
+    Command<K, V, KeyScanCursor<K>> hscanNovalues(K key, ScanCursor scanCursor) {
+        notNullKey(key);
+
+        return hscanNovalues(key, scanCursor, null);
+    }
+
     Command<K, V, MapScanCursor<K, V>> hscan(K key, ScanArgs scanArgs) {
         notNullKey(key);
 
         return hscan(key, ScanCursor.INITIAL, scanArgs);
+    }
+
+    Command<K, V, KeyScanCursor<K>> hscanNovalues(K key, ScanArgs scanArgs) {
+        notNullKey(key);
+
+        return hscanNovalues(key, ScanCursor.INITIAL, scanArgs);
     }
 
     Command<K, V, MapScanCursor<K, V>> hscan(K key, ScanCursor scanCursor, ScanArgs scanArgs) {
@@ -1466,11 +1736,32 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return createCommand(HSCAN, output, args);
     }
 
+    Command<K, V, KeyScanCursor<K>> hscanNovalues(K key, ScanCursor scanCursor, ScanArgs scanArgs) {
+        notNullKey(key);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec);
+        args.addKey(key);
+
+        scanArgs(scanCursor, scanArgs, args);
+
+        args.add(NOVALUES);
+
+        KeyScanOutput<K, V> output = new KeyScanOutput<>(codec);
+        return createCommand(HSCAN, output, args);
+    }
+
     Command<K, V, StreamScanCursor> hscanStreaming(KeyValueStreamingChannel<K, V> channel, K key) {
         notNullKey(key);
         notNull(channel);
 
         return hscanStreaming(channel, key, ScanCursor.INITIAL, null);
+    }
+
+    Command<K, V, StreamScanCursor> hscanNoValuesStreaming(KeyStreamingChannel<K> channel, K key) {
+        notNullKey(key);
+        notNull(channel);
+
+        return hscanNoValuesStreaming(channel, key, ScanCursor.INITIAL, null);
     }
 
     Command<K, V, StreamScanCursor> hscanStreaming(KeyValueStreamingChannel<K, V> channel, K key, ScanCursor scanCursor) {
@@ -1480,11 +1771,25 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return hscanStreaming(channel, key, scanCursor, null);
     }
 
+    Command<K, V, StreamScanCursor> hscanNoValuesStreaming(KeyStreamingChannel<K> channel, K key, ScanCursor scanCursor) {
+        notNullKey(key);
+        notNull(channel);
+
+        return hscanNoValuesStreaming(channel, key, scanCursor, null);
+    }
+
     Command<K, V, StreamScanCursor> hscanStreaming(KeyValueStreamingChannel<K, V> channel, K key, ScanArgs scanArgs) {
         notNullKey(key);
         notNull(channel);
 
         return hscanStreaming(channel, key, ScanCursor.INITIAL, scanArgs);
+    }
+
+    Command<K, V, StreamScanCursor> hscanNoValuesStreaming(KeyStreamingChannel<K> channel, K key, ScanArgs scanArgs) {
+        notNullKey(key);
+        notNull(channel);
+
+        return hscanNoValuesStreaming(channel, key, ScanCursor.INITIAL, scanArgs);
     }
 
     Command<K, V, StreamScanCursor> hscanStreaming(KeyValueStreamingChannel<K, V> channel, K key, ScanCursor scanCursor,
@@ -1498,6 +1803,22 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         scanArgs(scanCursor, scanArgs, args);
 
         KeyValueScanStreamingOutput<K, V> output = new KeyValueScanStreamingOutput<>(codec, channel);
+        return createCommand(HSCAN, output, args);
+    }
+
+    Command<K, V, StreamScanCursor> hscanNoValuesStreaming(KeyStreamingChannel<K> channel, K key, ScanCursor scanCursor,
+            ScanArgs scanArgs) {
+        notNullKey(key);
+        notNull(channel);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec);
+
+        args.addKey(key);
+        scanArgs(scanCursor, scanArgs, args);
+
+        args.add(NOVALUES);
+
+        KeyScanStreamingOutput<K, V> output = new KeyScanStreamingOutput<>(codec, channel);
         return createCommand(HSCAN, output, args);
     }
 
@@ -1516,6 +1837,79 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
 
         CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).add(map);
         return createCommand(HSET, new IntegerOutput<>(codec), args);
+    }
+
+    Command<K, V, Long> hsetex(K key, Map<K, V> map) {
+        notNullKey(key);
+        LettuceAssert.notNull(map, "Map " + MUST_NOT_BE_NULL);
+        LettuceAssert.isTrue(!map.isEmpty(), "Map " + MUST_NOT_BE_EMPTY);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+        args.add(FIELDS).add(map.size()).add(map);
+
+        return createCommand(HSETEX, new IntegerOutput<>(codec), args);
+    }
+
+    Command<K, V, Long> hsetex(K key, HSetExArgs hSetExArgs, Map<K, V> map) {
+        notNullKey(key);
+        LettuceAssert.notNull(hSetExArgs, "HSetExArgs " + MUST_NOT_BE_NULL);
+        LettuceAssert.notNull(map, "Map " + MUST_NOT_BE_NULL);
+        LettuceAssert.isTrue(!map.isEmpty(), "Map " + MUST_NOT_BE_EMPTY);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+        hSetExArgs.build(args);
+        args.add(FIELDS).add(map.size()).add(map);
+
+        return createCommand(HSETEX, new IntegerOutput<>(codec), args);
+    }
+
+    Command<K, V, List<KeyValue<K, V>>> hgetex(K key, K... fields) {
+        keyAndFieldsProvided(key, fields);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+        args.add(FIELDS).add(fields.length).addKeys(fields);
+
+        return createCommand(HGETEX, new KeyValueListOutput<>(codec, Arrays.asList(fields)), args);
+    }
+
+    Command<K, V, List<KeyValue<K, V>>> hgetex(K key, HGetExArgs hGetExArgs, K... fields) {
+        keyAndFieldsProvided(key, fields);
+        LettuceAssert.notNull(hGetExArgs, "HGetExArgs " + MUST_NOT_BE_NULL);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+        hGetExArgs.build(args);
+        args.add(FIELDS).add(fields.length).addKeys(fields);
+
+        return createCommand(HGETEX, new KeyValueListOutput<>(codec, Arrays.asList(fields)), args);
+    }
+
+    Command<K, V, Long> hgetex(KeyValueStreamingChannel<K, V> channel, K key, HGetExArgs hGetExArgs, K... fields) {
+        keyAndFieldsProvided(key, fields);
+        LettuceAssert.notNull(hGetExArgs, "HGetExArgs " + MUST_NOT_BE_NULL);
+        notNull(channel);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+        hGetExArgs.build(args);
+        args.add(FIELDS).add(fields.length).addKeys(fields);
+
+        return createCommand(HGETEX, new KeyValueStreamingOutput<>(codec, channel, Arrays.asList(fields)), args);
+    }
+
+    Command<K, V, List<KeyValue<K, V>>> hgetdel(K key, K... fields) {
+        keyAndFieldsProvided(key, fields);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).add(FIELDS).add(fields.length).addKeys(fields);
+
+        return createCommand(HGETDEL, new KeyValueListOutput<>(codec, Arrays.asList(fields)), args);
+    }
+
+    Command<K, V, Long> hgetdel(KeyValueStreamingChannel<K, V> channel, K key, K... fields) {
+        keyAndFieldsProvided(key, fields);
+
+        notNull(channel);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).add(FIELDS).add(fields.length).addKeys(fields);
+        return createCommand(HGETDEL, new KeyValueStreamingOutput<>(codec, channel, Arrays.asList(fields)), args);
     }
 
     Command<K, V, Boolean> hsetnx(K key, K field, V value) {
@@ -1568,23 +1962,56 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
     }
 
     Command<K, V, String> info() {
-        return createCommand(INFO, new StatusOutput<>(codec));
+        return createCommand(CommandType.INFO, new StatusOutput<>(codec));
     }
 
     Command<K, V, String> info(String section) {
         LettuceAssert.notNull(section, "Section " + MUST_NOT_BE_NULL);
 
         CommandArgs<K, V> args = new CommandArgs<>(codec).add(section);
-        return createCommand(INFO, new StatusOutput<>(codec), args);
+        return createCommand(CommandType.INFO, new StatusOutput<>(codec), args);
     }
 
-    Command<K, V, List<K>> keys(K pattern) {
+    Command<K, V, List<K>> keys(String pattern) {
+        LettuceAssert.notNull(pattern, "Pattern " + MUST_NOT_BE_NULL);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(pattern);
+        return createCommand(KEYS, new KeyListOutput<>(codec), args);
+    }
+
+    /**
+     * Find all keys matching the given pattern (legacy overload).
+     *
+     * @param pattern the pattern type: patternkey (pattern).
+     * @return List&lt;K&gt; array-reply list of keys matching {@code pattern}.
+     * @deprecated Use {@link #keys(String)} instead. This legacy overload will be removed in a later version.
+     */
+    @Deprecated
+    Command<K, V, List<K>> keysLegacy(K pattern) {
         LettuceAssert.notNull(pattern, "Pattern " + MUST_NOT_BE_NULL);
 
         return createCommand(KEYS, new KeyListOutput<>(codec), pattern);
     }
 
-    Command<K, V, Long> keys(KeyStreamingChannel<K> channel, K pattern) {
+    Command<K, V, Long> keys(KeyStreamingChannel<K> channel, String pattern) {
+        LettuceAssert.notNull(pattern, "Pattern " + MUST_NOT_BE_NULL);
+        notNull(channel);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(pattern);
+        return createCommand(KEYS, new KeyStreamingOutput<>(codec, channel), args);
+    }
+
+    /**
+     * Find all keys matching the given pattern (legacy overload).
+     *
+     * @param channel the channel.
+     * @param pattern the pattern.
+     * @return Long array-reply list of keys matching {@code pattern}.
+     * @deprecated Use {@link #keys(KeyStreamingChannel, String)} instead. This legacy overload will be removed in a later
+     *             version.
+     */
+    @Deprecated
+    Command<K, V, Long> keysLegacy(KeyStreamingChannel<K> channel, K pattern) {
         LettuceAssert.notNull(pattern, "Pattern " + MUST_NOT_BE_NULL);
         notNull(channel);
 
@@ -1726,7 +2153,7 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
     }
 
     Command<K, V, Long> memoryUsage(K key) {
-        return createCommand(MEMORY, new IntegerOutput<>(codec), new CommandArgs<>(codec).add(USAGE).add(key.toString()));
+        return createCommand(MEMORY, new IntegerOutput<>(codec), new CommandArgs<>(codec).add(USAGE).addKey(key));
     }
 
     Command<K, V, List<V>> mget(K... keys) {
@@ -1843,6 +2270,17 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return createCommand(MSETNX, new BooleanOutput<>(codec), args);
     }
 
+    Command<K, V, Boolean> msetex(Map<K, V> map, MSetExArgs setArgs) {
+        LettuceAssert.notNull(map, "Map " + MUST_NOT_BE_NULL);
+        LettuceAssert.isTrue(!map.isEmpty(), "Map " + MUST_NOT_BE_EMPTY);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(map.size()).add(map);
+        if (setArgs != null) {
+            setArgs.build(args);
+        }
+        return createCommand(MSETEX, new BooleanOutput<>(codec), args);
+    }
+
     Command<K, V, String> multi() {
         return createCommand(MULTI, new StatusOutput<>(codec));
     }
@@ -1879,6 +2317,15 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         notNullKey(key);
 
         return createCommand(PERSIST, new BooleanOutput<>(codec), key);
+    }
+
+    Command<K, V, List<Long>> hpersist(K key, K... fields) {
+        notNullKey(key);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+        args.add(FIELDS).add(fields.length).addKeys(fields);
+
+        return createCommand(HPERSIST, new IntegerListOutput<>(codec), args);
     }
 
     Command<K, V, Boolean> pexpire(K key, long milliseconds, ExpireArgs expireArgs) {
@@ -2012,11 +2459,31 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
     }
 
     @SuppressWarnings({ "unchecked", "rawtypes" })
-    Command<K, V, Map<K, Long>> pubsubNumsub(K... pattern) {
-        LettuceAssert.notNull(pattern, "Pattern " + MUST_NOT_BE_NULL);
-        LettuceAssert.notEmpty(pattern, "Pattern " + MUST_NOT_BE_EMPTY);
+    Command<K, V, Map<K, Long>> pubsubNumsub(K... channels) {
+        LettuceAssert.notNull(channels, "Channels " + MUST_NOT_BE_NULL);
+        LettuceAssert.notEmpty(channels, "Channels " + MUST_NOT_BE_EMPTY);
 
-        CommandArgs<K, V> args = new CommandArgs<>(codec).add(NUMSUB).addKeys(pattern);
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(NUMSUB).addKeys(channels);
+        return createCommand(PUBSUB, (MapOutput) new MapOutput<K, Long>((RedisCodec) codec), args);
+    }
+
+    Command<K, V, List<K>> pubsubShardChannels() {
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(SHARDCHANNELS);
+        return createCommand(PUBSUB, new KeyListOutput<>(codec), args);
+    }
+
+    Command<K, V, List<K>> pubsubShardChannels(K pattern) {
+        LettuceAssert.notNull(pattern, "Pattern " + MUST_NOT_BE_NULL);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(SHARDCHANNELS).addKey(pattern);
+        return createCommand(PUBSUB, new KeyListOutput<>(codec), args);
+    }
+
+    Command<K, V, Map<K, Long>> pubsubShardNumsub(K... shardChannels) {
+        LettuceAssert.notNull(shardChannels, "ShardChannels " + MUST_NOT_BE_NULL);
+        LettuceAssert.notEmpty(shardChannels, "ShardChannels " + MUST_NOT_BE_EMPTY);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(SHARDNUMSUB).addKeys(shardChannels);
         return createCommand(PUBSUB, (MapOutput) new MapOutput<K, Long>((RedisCodec) codec), args);
     }
 
@@ -2276,6 +2743,13 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return createCommand(SET, new StatusOutput<>(codec), args);
     }
 
+    Command<K, V, String> digestKey(K key) {
+        notNullKey(key);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+        return createCommand(DIGEST, new StatusOutput<>(codec), args);
+    }
+
     Command<K, V, V> setGet(K key, V value) {
         return setGet(key, value, new SetArgs());
     }
@@ -2521,6 +2995,13 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return createCommand(SPOP, new ValueSetOutput<>(codec), args);
     }
 
+    Command<K, V, Long> spublish(K shardChannel, V message) {
+        LettuceAssert.notNull(shardChannel, "ShardChannel " + MUST_NOT_BE_NULL);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(shardChannel).addValue(message);
+        return createCommand(SPUBLISH, new IntegerOutput<>(codec), args);
+    }
+
     Command<K, V, V> srandmember(K key) {
         notNullKey(key);
 
@@ -2625,7 +3106,15 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
 
         CommandArgs<K, V> args = new CommandArgs<>(codec);
         strAlgoArgs.build(args);
-        return createCommand(STRALGO, new StringMatchResultOutput<>(codec, strAlgoArgs.isWithIdx()), args);
+        return createCommand(STRALGO, new StringMatchResultOutput<>(codec), args);
+    }
+
+    Command<K, V, StringMatchResult> lcs(LcsArgs lcsArgs) {
+        LettuceAssert.notNull(lcsArgs, "lcsArgs" + MUST_NOT_BE_NULL);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec);
+        lcsArgs.build(args);
+        return createCommand(LCS, new StringMatchResultOutput<>(codec), args);
     }
 
     Command<K, V, Set<V>> sunion(K... keys) {
@@ -2754,6 +3243,32 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return createCommand(XACK, new IntegerOutput<>(codec), args);
     }
 
+    public Command<K, V, List<StreamEntryDeletionResult>> xackdel(K key, K group, String[] messageIds) {
+        return xackdel(key, group, null, messageIds);
+    }
+
+    public Command<K, V, List<StreamEntryDeletionResult>> xackdel(K key, K group, StreamDeletionPolicy policy,
+            String[] messageIds) {
+        notNullKey(key);
+        LettuceAssert.notNull(group, "Group " + MUST_NOT_BE_NULL);
+        LettuceAssert.notEmpty(messageIds, "MessageIds " + MUST_NOT_BE_EMPTY);
+        LettuceAssert.noNullElements(messageIds, "MessageIds " + MUST_NOT_CONTAIN_NULL_ELEMENTS);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).addKey(group);
+
+        if (policy != null) {
+            args.add(policy);
+        }
+
+        args.add(CommandKeyword.IDS).add(messageIds.length);
+
+        for (String messageId : messageIds) {
+            args.add(messageId);
+        }
+
+        return createCommand(XACKDEL, new StreamEntryDeletionResultListOutput<>(codec), args);
+    }
+
     public Command<K, V, ClaimedMessages<K, V>> xautoclaim(K key, XAutoClaimArgs<K> xAutoClaimArgs) {
         notNullKey(key);
         LettuceAssert.notNull(xAutoClaimArgs, "XAutoClaimArgs " + MUST_NOT_BE_NULL);
@@ -2836,6 +3351,30 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         }
 
         return createCommand(XDEL, new IntegerOutput<>(codec), args);
+    }
+
+    public Command<K, V, List<StreamEntryDeletionResult>> xdelex(K key, String[] messageIds) {
+        return xdelex(key, null, messageIds);
+    }
+
+    public Command<K, V, List<StreamEntryDeletionResult>> xdelex(K key, StreamDeletionPolicy policy, String[] messageIds) {
+        notNullKey(key);
+        LettuceAssert.notEmpty(messageIds, "MessageIds " + MUST_NOT_BE_EMPTY);
+        LettuceAssert.noNullElements(messageIds, "MessageIds " + MUST_NOT_CONTAIN_NULL_ELEMENTS);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+
+        if (policy != null) {
+            args.add(policy);
+        }
+
+        args.add(CommandKeyword.IDS).add(messageIds.length);
+
+        for (String messageId : messageIds) {
+            args.add(messageId);
+        }
+
+        return createCommand(XDELEX, new StreamEntryDeletionResultListOutput<>(codec), args);
     }
 
     public Command<K, V, String> xgroupCreate(StreamOffset<K> offset, K group, XGroupCreateArgs commandArgs) {
@@ -3026,6 +3565,15 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return createCommand(XTRIM, new IntegerOutput<>(codec), args);
     }
 
+    public Command<K, V, String> xcfgset(K key, XCfgSetArgs xCfgSetArgs) {
+        notNullKey(key);
+        LettuceAssert.notNull(xCfgSetArgs, "XCfgSetArgs " + MUST_NOT_BE_NULL);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key);
+        xCfgSetArgs.build(args);
+        return createCommand(XCFGSET, new StatusOutput<>(codec), args);
+    }
+
     private static String getLowerValue(Range<String> range) {
 
         Boundary<String> boundary = range.getLower();
@@ -3102,6 +3650,48 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         byteBuffer.get(result);
 
         return result;
+    }
+
+    Command<K, V, KeyValue<K, ScoredValue<V>>> bzmpop(long timeout, ZPopArgs popArgs, K[] keys) {
+        notEmpty(keys);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(timeout).add(keys.length).addKeys(keys);
+
+        popArgs.build(args);
+
+        return createCommand(BZMPOP, new KeyValueOfScoredValueOutput<>(codec, keys[0]), args);
+    }
+
+    Command<K, V, KeyValue<K, ScoredValue<V>>> bzmpop(double timeout, ZPopArgs popArgs, K[] keys) {
+        notEmpty(keys);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(timeout).add(keys.length).addKeys(keys);
+
+        popArgs.build(args);
+
+        return createCommand(BZMPOP, new KeyValueOfScoredValueOutput<>(codec, keys[0]), args);
+    }
+
+    Command<K, V, KeyValue<K, List<ScoredValue<V>>>> bzmpop(long timeout, long count, ZPopArgs popArgs, K[] keys) {
+        notEmpty(keys);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(timeout).add(keys.length).addKeys(keys);
+
+        popArgs.build(args);
+        args.add(COUNT).add(count);
+
+        return createCommand(BZMPOP, new KeyValueListScoredValueOutput<>(codec, keys[0]), args);
+    }
+
+    Command<K, V, KeyValue<K, List<ScoredValue<V>>>> bzmpop(double timeout, long count, ZPopArgs popArgs, K[] keys) {
+        notEmpty(keys);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(timeout).add(keys.length).addKeys(keys);
+
+        popArgs.build(args);
+        args.add(COUNT).add(count);
+
+        return createCommand(BZMPOP, new KeyValueListScoredValueOutput<>(codec, keys[0]), args);
     }
 
     Command<K, V, KeyValue<K, ScoredValue<V>>> bzpopmin(long timeout, K... keys) {
@@ -3341,6 +3931,27 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         notEmpty(members);
 
         return createCommand(ZMSCORE, new DoubleListOutput<>(codec), key, members);
+    }
+
+    Command<K, V, KeyValue<K, ScoredValue<V>>> zmpop(ZPopArgs popArgs, K[] keys) {
+        notEmpty(keys);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(keys.length).addKeys(keys);
+
+        popArgs.build(args);
+
+        return createCommand(ZMPOP, new KeyValueOfScoredValueOutput<>(codec, keys[0]), args);
+    }
+
+    Command<K, V, KeyValue<K, List<ScoredValue<V>>>> zmpop(long count, ZPopArgs popArgs, K[] keys) {
+        notEmpty(keys);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(keys.length).addKeys(keys);
+
+        popArgs.build(args);
+        args.add(COUNT).add(count);
+
+        return createCommand(ZMPOP, new KeyValueListScoredValueOutput<>(codec, keys[0]), args);
     }
 
     Command<K, V, ScoredValue<V>> zpopmin(K key) {
@@ -3689,6 +4300,13 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return createCommand(ZRANK, new IntegerOutput<>(codec), key, member);
     }
 
+    Command<K, V, ScoredValue<Long>> zrankWithScore(K key, V member) {
+        notNullKey(key);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).addValue(member).add(WITHSCORE);
+        return createCommand(ZRANK, (ScoredValueOutput) new ScoredValueOutput<>(LongCodec.INSTANCE), args);
+    }
+
     Command<K, V, Long> zrem(K key, V... members) {
         notNullKey(key);
         LettuceAssert.notNull(members, "Members " + MUST_NOT_BE_NULL);
@@ -3912,8 +4530,6 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
     Command<K, V, Long> zrevrangebyscoreWithScores(ScoredValueStreamingChannel<V> channel, K key, double max, double min,
             long offset, long count) {
         notNullKey(key);
-        LettuceAssert.notNull(min, "Min " + MUST_NOT_BE_NULL);
-        LettuceAssert.notNull(max, "Max " + MUST_NOT_BE_NULL);
         notNull(channel);
         return zrevrangebyscoreWithScores(channel, key, string(max), string(min), offset, count);
     }
@@ -3945,6 +4561,13 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         notNullKey(key);
 
         return createCommand(ZREVRANK, new IntegerOutput<>(codec), key, member);
+    }
+
+    Command<K, V, ScoredValue<Long>> zrevrankWithScore(K key, V member) {
+        notNullKey(key);
+
+        CommandArgs<K, V> args = new CommandArgs<>(codec).addKey(key).addValue(member).add(WITHSCORE);
+        return createCommand(ZREVRANK, (ScoredValueOutput) new ScoredValueOutput<>(LongCodec.INSTANCE), args);
     }
 
     Command<K, V, ScoredValueScanCursor<V>> zscan(K key) {
@@ -4064,141 +4687,38 @@ class RedisCommandBuilder<K, V> extends BaseRedisCommandBuilder<K, V> {
         return createCommand(ZUNIONSTORE, new IntegerOutput<>(codec), args);
     }
 
-    private boolean allElementsInstanceOf(Object[] objects, Class<?> expectedAssignableType) {
+    Command<K, V, List<Map<String, Object>>> clusterLinks() {
+        CommandArgs<K, V> args = new CommandArgs<>(codec).add(LINKS);
+        return createCommand(CLUSTER, (CommandOutput) new ObjectOutput<>(StringCodec.UTF8), args);
+    }
 
-        for (Object object : objects) {
-            if (!expectedAssignableType.isAssignableFrom(object.getClass())) {
-                return false;
-            }
+    enum LongCodec implements RedisCodec<Long, Long> {
+
+        INSTANCE;
+
+        @Override
+        public Long decodeKey(ByteBuffer bytes) {
+
+            String s = StringCodec.ASCII.decodeKey(bytes);
+
+            return s == null ? null : Long.valueOf(s);
         }
 
-        return true;
-    }
-
-    private byte[] maxValue(Range<? extends V> range) {
-
-        Boundary<? extends V> upper = range.getUpper();
-
-        if (upper.getValue() == null) {
-            return PLUS_BYTES;
+        @Override
+        public Long decodeValue(ByteBuffer bytes) {
+            return decodeKey(bytes);
         }
 
-        ByteBuffer encoded = codec.encodeValue(upper.getValue());
-        ByteBuffer allocated = ByteBuffer.allocate(encoded.remaining() + 1);
-        allocated.put(upper.isIncluding() ? (byte) '[' : (byte) '(').put(encoded);
-
-        return allocated.array();
-    }
-
-    private byte[] minValue(Range<? extends V> range) {
-
-        Boundary<? extends V> lower = range.getLower();
-
-        if (lower.getValue() == null) {
-            return MINUS_BYTES;
+        @Override
+        public ByteBuffer encodeKey(Long key) {
+            return StringCodec.ASCII.encodeKey(key == null ? null : key.toString());
         }
 
-        ByteBuffer encoded = codec.encodeValue(lower.getValue());
-        ByteBuffer allocated = ByteBuffer.allocate(encoded.remaining() + 1);
-        allocated.put(lower.isIncluding() ? (byte) '[' : (byte) '(').put(encoded);
-
-        return allocated.array();
-    }
-
-    static void notNull(ScoredValueStreamingChannel<?> channel) {
-        LettuceAssert.notNull(channel, "ScoredValueStreamingChannel " + MUST_NOT_BE_NULL);
-    }
-
-    static void notNull(KeyStreamingChannel<?> channel) {
-        LettuceAssert.notNull(channel, "KeyValueStreamingChannel " + MUST_NOT_BE_NULL);
-    }
-
-    static void notNull(ValueStreamingChannel<?> channel) {
-        LettuceAssert.notNull(channel, "ValueStreamingChannel " + MUST_NOT_BE_NULL);
-    }
-
-    static void notNull(KeyValueStreamingChannel<?, ?> channel) {
-        LettuceAssert.notNull(channel, "KeyValueStreamingChannel " + MUST_NOT_BE_NULL);
-    }
-
-    static void notNullMinMax(String min, String max) {
-        LettuceAssert.notNull(min, "Min " + MUST_NOT_BE_NULL);
-        LettuceAssert.notNull(max, "Max " + MUST_NOT_BE_NULL);
-    }
-
-    private static void addLimit(CommandArgs<?, ?> args, Limit limit) {
-
-        if (limit.isLimited()) {
-            args.add(LIMIT).add(limit.getOffset()).add(limit.getCount());
-        }
-    }
-
-    private static void assertNodeId(String nodeId) {
-        LettuceAssert.notNull(nodeId, "NodeId " + MUST_NOT_BE_NULL);
-        LettuceAssert.notEmpty(nodeId, "NodeId " + MUST_NOT_BE_EMPTY);
-    }
-
-    private static String max(Range<? extends Number> range) {
-
-        Boundary<? extends Number> upper = range.getUpper();
-
-        if (upper.getValue() == null
-                || upper.getValue() instanceof Double && upper.getValue().doubleValue() == Double.POSITIVE_INFINITY) {
-            return "+inf";
+        @Override
+        public ByteBuffer encodeValue(Long value) {
+            return encodeKey(value);
         }
 
-        if (!upper.isIncluding()) {
-            return "(" + upper.getValue();
-        }
-
-        return upper.getValue().toString();
-    }
-
-    private static String min(Range<? extends Number> range) {
-
-        Boundary<? extends Number> lower = range.getLower();
-
-        if (lower.getValue() == null
-                || lower.getValue() instanceof Double && lower.getValue().doubleValue() == Double.NEGATIVE_INFINITY) {
-            return "-inf";
-        }
-
-        if (!lower.isIncluding()) {
-            return "(" + lower.getValue();
-        }
-
-        return lower.getValue().toString();
-    }
-
-    private static void notEmpty(Object[] keys) {
-        LettuceAssert.notNull(keys, "Keys " + MUST_NOT_BE_NULL);
-        LettuceAssert.notEmpty(keys, "Keys " + MUST_NOT_BE_EMPTY);
-    }
-
-    private static void notEmptySlots(int[] slots) {
-        LettuceAssert.notNull(slots, "Slots " + MUST_NOT_BE_NULL);
-        LettuceAssert.notEmpty(slots, "Slots " + MUST_NOT_BE_EMPTY);
-    }
-
-    private static void notEmptyValues(Object[] values) {
-        LettuceAssert.notNull(values, "Values " + MUST_NOT_BE_NULL);
-        LettuceAssert.notEmpty(values, "Values " + MUST_NOT_BE_EMPTY);
-    }
-
-    private static void notNullKey(Object key) {
-        LettuceAssert.notNull(key, "Key " + MUST_NOT_BE_NULL);
-    }
-
-    private static void notNullLimit(Limit limit) {
-        LettuceAssert.notNull(limit, "Limit " + MUST_NOT_BE_NULL);
-    }
-
-    private static void notNullRange(Range<?> range) {
-        LettuceAssert.notNull(range, "Range " + MUST_NOT_BE_NULL);
-    }
-
-    private static void notEmptyRanges(Range<?>[] ranges) {
-        LettuceAssert.notEmpty(ranges, "Ranges " + MUST_NOT_BE_NULL);
     }
 
 }

@@ -1,7 +1,11 @@
 /*
- * Copyright 2021-2022 the original author or authors.
+ * Copyright 2021-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -171,7 +175,7 @@ class ConcurrentLruCache<K, V> {
     }
 
     /**
-     * Return the the maximum number of entries in the cache (0 indicates no caching, always generating a new value).
+     * Return the maximum number of entries in the cache (0 indicates no caching, always generating a new value).
      *
      * @see #size()
      */

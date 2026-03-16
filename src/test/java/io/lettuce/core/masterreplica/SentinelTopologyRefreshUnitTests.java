@@ -1,20 +1,6 @@
-/*
- * Copyright 2020-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.masterreplica;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -27,6 +13,7 @@ import java.util.concurrent.CompletableFuture;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -57,12 +44,14 @@ import io.netty.util.concurrent.EventExecutorGroup;
  *
  * @author Mark Paluch
  */
+@Tag(UNIT_TEST)
 @SuppressWarnings("unchecked")
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 class SentinelTopologyRefreshUnitTests {
 
     private static final RedisURI host1 = RedisURI.create("localhost", 1234);
+
     private static final RedisURI host2 = RedisURI.create("localhost", 3456);
 
     @Mock
@@ -91,8 +80,8 @@ class SentinelTopologyRefreshUnitTests {
     @BeforeEach
     void before() {
 
-        when(redisClient.connectPubSubAsync(any(StringCodec.class), eq(host1))).thenReturn(
-                ConnectionFuture.completed(null, connection));
+        when(redisClient.connectPubSubAsync(any(StringCodec.class), eq(host1)))
+                .thenReturn(ConnectionFuture.completed(null, connection));
         when(clientResources.eventExecutorGroup()).thenReturn(eventExecutors);
         when(redisClient.getResources()).thenReturn(clientResources);
         when(connection.async()).thenReturn(pubSubAsyncCommands);
@@ -126,8 +115,8 @@ class SentinelTopologyRefreshUnitTests {
 
         sut = new SentinelTopologyRefresh(redisClient, "mymaster", Arrays.asList(host1, host2));
 
-        when(redisClient.connectPubSubAsync(any(StringCodec.class), eq(host2))).thenReturn(
-                ConnectionFuture.from(null, Futures.failed(new RedisConnectionException("err"))));
+        when(redisClient.connectPubSubAsync(any(StringCodec.class), eq(host2)))
+                .thenReturn(ConnectionFuture.from(null, Futures.failed(new RedisConnectionException("err"))));
 
         sut.bind(refreshRunnable);
 
@@ -151,9 +140,9 @@ class SentinelTopologyRefreshUnitTests {
 
         sut = new SentinelTopologyRefresh(redisClient, "mymaster", Arrays.asList(host1, host2));
 
-        when(redisClient.connectPubSubAsync(any(StringCodec.class), eq(host2))).thenReturn(
-                ConnectionFuture.from(null, Futures.failed(new RedisConnectionException("err")))).thenReturn(
-                ConnectionFuture.completed(null, connection2));
+        when(redisClient.connectPubSubAsync(any(StringCodec.class), eq(host2)))
+                .thenReturn(ConnectionFuture.from(null, Futures.failed(new RedisConnectionException("err"))))
+                .thenReturn(ConnectionFuture.completed(null, connection2));
 
         sut.bind(refreshRunnable);
 
@@ -397,4 +386,5 @@ class SentinelTopologyRefreshUnitTests {
     private PubSubMessageHandler getMessageHandler() {
         return ReflectionTestUtils.getField(sut, "messageHandler");
     }
+
 }

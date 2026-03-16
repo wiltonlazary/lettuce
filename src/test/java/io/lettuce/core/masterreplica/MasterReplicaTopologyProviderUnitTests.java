@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,11 +19,13 @@
  */
 package io.lettuce.core.masterreplica;
 
+import static io.lettuce.TestTags.UNIT_TEST;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.util.List;
 
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import io.lettuce.core.RedisURI;
@@ -33,6 +39,7 @@ import io.lettuce.test.settings.TestSettings;
  *
  * @author Mark Paluch
  */
+@Tag(UNIT_TEST)
 class MasterReplicaTopologyProviderUnitTests {
 
     private StatefulRedisConnection<String, String> connectionMock = mock(StatefulRedisConnection.class);
@@ -99,7 +106,6 @@ class MasterReplicaTopologyProviderUnitTests {
         List<RedisNodeDescription> result = sut.getNodesFromInfo(info);
         assertThat(result).hasSize(2);
 
-
         RedisNodeDescription replica = result.get(0);
         assertThat(replica.getRole().isReplica()).isTrue();
 
@@ -130,11 +136,12 @@ class MasterReplicaTopologyProviderUnitTests {
 
         String info = "# Replication\r\n" + "role:master\r\n"
                 + "slave0:ip=127.0.0.1,port=6483,state=online,offset=56276,lag=0\r\n"
-                + "slave1:ip=127.0.0.1,port=6484,state=online,offset=56276,lag=0\r\n" + "master_repl_offset:56276\r\n"
+                + "slave1:ip=127.0.0.1,port=6484,state=online,offset=56276,lag=0\r\n"
+                + "slave2:ip=redis-replica-2.,port=6484,state=online,offset=56276,lag=0\r\n" + "master_repl_offset:56276\r\n"
                 + "repl_backlog_active:1\r\n";
 
         List<RedisNodeDescription> result = sut.getNodesFromInfo(info);
-        assertThat(result).hasSize(3);
+        assertThat(result).hasSize(4);
 
         RedisNodeDescription replica1 = result.get(1);
 
@@ -147,14 +154,19 @@ class MasterReplicaTopologyProviderUnitTests {
         assertThat(replica2.getRole()).isEqualTo(RedisInstance.Role.SLAVE);
         assertThat(replica2.getUri().getHost()).isEqualTo("127.0.0.1");
         assertThat(replica2.getUri().getPort()).isEqualTo(6484);
+
+        RedisNodeDescription replica3 = result.get(3);
+
+        assertThat(replica3.getRole()).isEqualTo(RedisInstance.Role.SLAVE);
+        assertThat(replica3.getUri().getHost()).isEqualTo("redis-replica-2.");
+        assertThat(replica3.getUri().getPort()).isEqualTo(6484);
     }
 
     @Test
     void shouldParseIPv6SlaveAddress() {
 
         String info = "# Replication\r\n" + "role:master\r\n"
-                + "slave0:ip=::20f8:1400:0:0,port=6483,state=online,offset=56276,lag=0\r\n"
-                + "master_repl_offset:56276\r\n"
+                + "slave0:ip=::20f8:1400:0:0,port=6483,state=online,offset=56276,lag=0\r\n" + "master_repl_offset:56276\r\n"
                 + "repl_backlog_active:1\r\n";
 
         List<RedisNodeDescription> result = sut.getNodesFromInfo(info);
@@ -166,4 +178,5 @@ class MasterReplicaTopologyProviderUnitTests {
         assertThat(replica1.getUri().getHost()).isEqualTo("::20f8:1400:0:0");
         assertThat(replica1.getUri().getPort()).isEqualTo(6483);
     }
+
 }

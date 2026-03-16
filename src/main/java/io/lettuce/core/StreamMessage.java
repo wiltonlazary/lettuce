@@ -1,18 +1,3 @@
-/*
- * Copyright 2018-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core;
 
 import java.util.Map;
@@ -32,6 +17,10 @@ public class StreamMessage<K, V> {
 
     private final Map<K, V> body;
 
+    private final Long millisElapsedFromDelivery;
+
+    private final Long deliveredCount;
+
     /**
      * Create a new {@link StreamMessage}.
      *
@@ -44,6 +33,27 @@ public class StreamMessage<K, V> {
         this.stream = stream;
         this.id = id;
         this.body = body;
+        this.millisElapsedFromDelivery = null;
+        this.deliveredCount = null;
+    }
+
+    /**
+     * Create a new {@link StreamMessage}.
+     *
+     * @param stream the stream.
+     * @param id the message id.
+     * @param millisElapsedFromDelivery the milliseconds since last delivery when CLAIM was used.
+     * @param deliveredCount the number of prior deliveries when CLAIM was used.
+     * @param body map containing the message body.
+     * @since 7.1
+     */
+    public StreamMessage(K stream, String id, Map<K, V> body, long millisElapsedFromDelivery, long deliveredCount) {
+
+        this.stream = stream;
+        this.id = id;
+        this.body = body;
+        this.millisElapsedFromDelivery = millisElapsedFromDelivery;
+        this.deliveredCount = deliveredCount;
     }
 
     public K getStream() {
@@ -59,6 +69,36 @@ public class StreamMessage<K, V> {
      */
     public Map<K, V> getBody() {
         return body;
+    }
+
+    /**
+     * @return the milliseconds since the last delivery of this message when CLAIM was used.
+     *         <ul>
+     *         <li>{@code null} when not applicable</li>
+     *         <li>{@code 0} means not claimed from the pending entries list (PEL)</li>
+     *         <li>{@code > 0} means claimed from the PEL</li>
+     *         </ul>
+     * @since 7.1
+     */
+    public Long getMillisElapsedFromDelivery() {
+        return millisElapsedFromDelivery;
+    }
+
+    /**
+     * @return the number of prior deliveries of this message when CLAIM was used:
+     *         <ul>
+     *         <li>{@code null} when not applicable</li>
+     *         <li>{@code 0} means not claimed from the pending entries list (PEL)</li>
+     *         <li>{@code > 0} means claimed from the PEL</li>
+     *         </ul>
+     * @since 7.1
+     */
+    public Long getDeliveredCount() {
+        return deliveredCount;
+    }
+
+    public boolean isClaimed() {
+        return deliveredCount != null && deliveredCount > 0;
     }
 
     @Override

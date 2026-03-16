@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -34,7 +38,6 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-import reactor.core.publisher.Mono;
 import io.lettuce.core.*;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.cluster.api.NodeSelectionSupport;
@@ -56,6 +59,7 @@ import io.lettuce.core.internal.Exceptions;
 import io.lettuce.core.internal.Futures;
 import io.lettuce.core.internal.LettuceAssert;
 import io.lettuce.core.internal.LettuceLists;
+import io.lettuce.core.json.JsonParser;
 import io.lettuce.core.output.KeyValueStreamingChannel;
 import io.lettuce.core.protocol.CommandExpiryWriter;
 import io.lettuce.core.protocol.CommandHandler;
@@ -68,6 +72,9 @@ import io.lettuce.core.pubsub.StatefulRedisPubSubConnectionImpl;
 import io.lettuce.core.resource.ClientResources;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
+import reactor.core.publisher.Mono;
+
+import static io.lettuce.core.RedisAuthenticationHandler.createHandler;
 
 /**
  * A scalable and thread-safe <a href="https://redis.io/">Redis</a> cluster client supporting synchronous, asynchronous and
@@ -177,8 +184,8 @@ public class RedisClusterClient extends AbstractRedisClient {
      * cluster. If any uri is successful for connection, the others are not tried anymore. The initial uri is needed to discover
      * the cluster structure for distributing the requests.
      *
-     * @param clientResources the client resources. If {@code null}, the client will create a new dedicated instance of
-     *        client resources and keep track of them.
+     * @param clientResources the client resources. If {@code null}, the client will create a new dedicated instance of client
+     *        resources and keep track of them.
      * @param redisURIs iterable of initial {@link RedisURI cluster URIs}. Must not be {@code null} and not empty.
      */
     protected RedisClusterClient(ClientResources clientResources, Iterable<RedisURI> redisURIs) {
@@ -191,7 +198,6 @@ public class RedisClusterClient extends AbstractRedisClient {
         this.initialUris = Collections.unmodifiableList(LettuceLists.newList(redisURIs));
         this.refresh = createTopologyRefresh();
 
-        setDefaultTimeout(getFirstUri().getTimeout());
         setOptions(ClusterClientOptions.create());
     }
 
@@ -541,7 +547,7 @@ public class RedisClusterClient extends AbstractRedisClient {
         RedisChannelWriter writer = endpoint;
 
         if (CommandExpiryWriter.isSupported(getClusterClientOptions())) {
-            writer = new CommandExpiryWriter(writer, getClusterClientOptions(), getResources());
+            writer = CommandExpiryWriter.buildCommandExpiryWriter(writer, getClusterClientOptions(), getResources());
         }
 
         if (CommandListenerWriter.isSupported(getCommandListeners())) {
@@ -549,7 +555,10 @@ public class RedisClusterClient extends AbstractRedisClient {
         }
 
         StatefulRedisConnectionImpl<K, V> connection = newStatefulRedisConnection(writer, endpoint, codec,
-                getFirstUri().getTimeout());
+                getFirstUri().getTimeout(), getClusterClientOptions().getJsonParser());
+
+        connection.setAuthenticationHandler(
+                createHandler(connection, getFirstUri().getCredentialsProvider(), false, getOptions()));
 
         ConnectionFuture<StatefulRedisConnection<K, V>> connectionFuture = connectStatefulAsync(connection, endpoint,
                 getFirstUri(), socketAddressSupplier,
@@ -560,6 +569,25 @@ public class RedisClusterClient extends AbstractRedisClient {
                 connection.closeAsync();
             }
         });
+    }
+
+    /**
+     * Create a new instance of {@link StatefulRedisConnectionImpl} or a subclass.
+     * <p>
+     * Subclasses of {@link RedisClusterClient} may override that method.
+     *
+     * @param channelWriter the channel writer
+     * @param pushHandler the handler for push notifications
+     * @param codec codec
+     * @param timeout default timeout
+     * @param parser the JSON parser to be used
+     * @param <K> Key-Type
+     * @param <V> Value Type
+     * @return new instance of StatefulRedisConnectionImpl
+     */
+    protected <K, V> StatefulRedisConnectionImpl<K, V> newStatefulRedisConnection(RedisChannelWriter channelWriter,
+            PushHandler pushHandler, RedisCodec<K, V> codec, Duration timeout, Supplier<JsonParser> parser) {
+        return new StatefulRedisConnectionImpl<>(channelWriter, pushHandler, codec, timeout, parser);
     }
 
     /**
@@ -605,7 +633,7 @@ public class RedisClusterClient extends AbstractRedisClient {
         RedisChannelWriter writer = endpoint;
 
         if (CommandExpiryWriter.isSupported(getClusterClientOptions())) {
-            writer = new CommandExpiryWriter(writer, getClusterClientOptions(), getResources());
+            writer = CommandExpiryWriter.buildCommandExpiryWriter(writer, getClusterClientOptions(), getResources());
         }
 
         if (CommandListenerWriter.isSupported(getCommandListeners())) {
@@ -614,10 +642,13 @@ public class RedisClusterClient extends AbstractRedisClient {
 
         StatefulRedisPubSubConnectionImpl<K, V> connection = new StatefulRedisPubSubConnectionImpl<>(endpoint, writer, codec,
                 getFirstUri().getTimeout());
+        connection.setAuthenticationHandler(
+                createHandler(connection, getFirstUri().getCredentialsProvider(), true, getOptions()));
 
         ConnectionFuture<StatefulRedisPubSubConnection<K, V>> connectionFuture = connectStatefulAsync(connection, endpoint,
                 getFirstUri(), socketAddressSupplier,
                 () -> new PubSubCommandHandler<>(getClusterClientOptions(), getResources(), codec, endpoint));
+
         return connectionFuture.whenComplete((conn, throwable) -> {
             if (throwable != null) {
                 connection.closeAsync();
@@ -648,7 +679,7 @@ public class RedisClusterClient extends AbstractRedisClient {
         RedisChannelWriter writer = endpoint;
 
         if (CommandExpiryWriter.isSupported(getClusterClientOptions())) {
-            writer = new CommandExpiryWriter(writer, getClusterClientOptions(), getResources());
+            writer = CommandExpiryWriter.buildCommandExpiryWriter(writer, getClusterClientOptions(), getResources());
         }
 
         if (CommandListenerWriter.isSupported(getCommandListeners())) {
@@ -663,7 +694,7 @@ public class RedisClusterClient extends AbstractRedisClient {
         clusterWriter.setClusterConnectionProvider(pooledClusterConnectionProvider);
 
         StatefulRedisClusterConnectionImpl<K, V> connection = newStatefulRedisClusterConnection(clusterWriter,
-                pooledClusterConnectionProvider, codec, getFirstUri().getTimeout());
+                pooledClusterConnectionProvider, codec, getFirstUri().getTimeout(), getClusterClientOptions().getJsonParser());
 
         connection.setReadFrom(ReadFrom.UPSTREAM);
         connection.setPartitions(partitions);
@@ -680,9 +711,30 @@ public class RedisClusterClient extends AbstractRedisClient {
                     .onErrorResume(t -> connect(socketAddressSupplier, endpoint, connection, commandHandlerSupplier));
         }
 
-        return connectionMono.doOnNext(
+        return connectionMono
+                .doOnNext(
                         c -> connection.registerCloseables(closeableResources, clusterWriter, pooledClusterConnectionProvider))
                 .map(it -> (StatefulRedisClusterConnection<K, V>) it).toFuture();
+    }
+
+    /**
+     * Create a new instance of {@link StatefulRedisClusterConnectionImpl} or a subclass.
+     * <p>
+     * Subclasses of {@link RedisClusterClient} may override that method.
+     *
+     * @param channelWriter the channel writer
+     * @param pushHandler the handler for push notifications
+     * @param codec codec
+     * @param timeout default timeout
+     * @param parser the Json parser to be used
+     * @param <K> Key-Type
+     * @param <V> Value Type
+     * @return new instance of StatefulRedisClusterConnectionImpl
+     */
+    protected <V, K> StatefulRedisClusterConnectionImpl<K, V> newStatefulRedisClusterConnection(
+            RedisChannelWriter channelWriter, ClusterPushHandler pushHandler, RedisCodec<K, V> codec, Duration timeout,
+            Supplier<JsonParser> parser) {
+        return new StatefulRedisClusterConnectionImpl(channelWriter, pushHandler, codec, timeout, parser);
     }
 
     /**
@@ -745,7 +797,7 @@ public class RedisClusterClient extends AbstractRedisClient {
         RedisChannelWriter writer = endpoint;
 
         if (CommandExpiryWriter.isSupported(getClusterClientOptions())) {
-            writer = new CommandExpiryWriter(writer, getClusterClientOptions(), getResources());
+            writer = CommandExpiryWriter.buildCommandExpiryWriter(writer, getClusterClientOptions(), getResources());
         }
 
         if (CommandListenerWriter.isSupported(getCommandListeners())) {
@@ -763,6 +815,8 @@ public class RedisClusterClient extends AbstractRedisClient {
 
         clusterWriter.setClusterConnectionProvider(pooledClusterConnectionProvider);
         connection.setPartitions(partitions);
+        connection.setAuthenticationHandler(
+                createHandler(connection, getFirstUri().getCredentialsProvider(), true, getOptions()));
 
         Supplier<CommandHandler> commandHandlerSupplier = () -> new PubSubCommandHandler<>(getClusterClientOptions(),
                 getResources(), codec, endpoint);
@@ -834,6 +888,7 @@ public class RedisClusterClient extends AbstractRedisClient {
         }
 
         state.apply(connectionSettings);
+
         connectionBuilder.connectionInitializer(createHandshake(state));
 
         connectionBuilder.reconnectionListener(new ReconnectEventListener(topologyRefreshScheduler));
@@ -842,6 +897,7 @@ public class RedisClusterClient extends AbstractRedisClient {
         connectionBuilder.clientResources(getResources());
         connectionBuilder.endpoint(endpoint);
         connectionBuilder.commandHandler(commandHandlerSupplier);
+
         connectionBuilder(socketAddressSupplier, connectionBuilder, connection.getConnectionEvents(), connectionSettings);
 
         return connectionBuilder;
@@ -903,6 +959,26 @@ public class RedisClusterClient extends AbstractRedisClient {
             this.partitions.reload(loadedPartitions.getPartitions());
             updatePartitionsInConnections();
         }).whenComplete((unused, throwable) -> event.record());
+    }
+
+    /**
+     * Suspend periodic topology refresh if it was activated previously. Suspending cancels the periodic schedule without
+     * interrupting any running topology refresh. Suspension is in place until obtaining a new {@link #connect connection}.
+     *
+     * @since 6.3
+     */
+    public void suspendTopologyRefresh() {
+        topologyRefreshScheduler.suspendTopologyRefresh();
+    }
+
+    /**
+     * Return whether a scheduled or adaptive topology refresh is in progress.
+     *
+     * @return {@code true} if a topology refresh is in progress.
+     * @since 6.3
+     */
+    public boolean isTopologyRefreshInProgress() {
+        return topologyRefreshScheduler.isTopologyRefreshInProgress();
     }
 
     protected void updatePartitionsInConnections() {
@@ -1074,7 +1150,7 @@ public class RedisClusterClient extends AbstractRedisClient {
     @Override
     public CompletableFuture<Void> shutdownAsync(long quietPeriod, long timeout, TimeUnit timeUnit) {
 
-        topologyRefreshScheduler.shutdown();
+        suspendTopologyRefresh();
 
         return super.shutdownAsync(quietPeriod, timeout, timeUnit);
     }

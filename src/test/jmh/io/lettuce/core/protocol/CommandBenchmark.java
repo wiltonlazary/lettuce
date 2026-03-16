@@ -1,18 +1,3 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.protocol;
 
 import java.nio.charset.StandardCharsets;
@@ -25,7 +10,6 @@ import org.openjdk.jmh.infra.Blackhole;
 import io.lettuce.core.codec.ByteArrayCodec;
 import io.lettuce.core.codec.RedisCodec;
 import io.lettuce.core.codec.StringCodec;
-import io.lettuce.core.codec.Utf8StringCodec;
 import io.lettuce.core.output.ValueOutput;
 
 /**
@@ -41,7 +25,7 @@ import io.lettuce.core.output.ValueOutput;
 public class CommandBenchmark {
 
     private static final ByteArrayCodec BYTE_ARRAY_CODEC = new ByteArrayCodec();
-    private static final Utf8StringCodec OLD_STRING_CODEC = new Utf8StringCodec();
+    private static final StringCodec OLD_STRING_CODEC = StringCodec.UTF8;
     private static final StringCodec NEW_STRING_CODEC = new StringCodec(StandardCharsets.UTF_8);
     private static final EmptyByteBuf DUMMY_BYTE_BUF = new EmptyByteBuf();
 

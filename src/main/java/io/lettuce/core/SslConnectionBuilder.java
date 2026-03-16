@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -32,6 +36,7 @@ import io.lettuce.core.resource.ClientResources;
 import io.netty.buffer.ByteBufAllocator;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
 import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
@@ -50,7 +55,6 @@ public class SslConnectionBuilder extends ConnectionBuilder {
 
     private RedisURI redisURI;
 
-
     public SslConnectionBuilder ssl(RedisURI redisURI) {
         this.redisURI = redisURI;
         return this;
@@ -67,7 +71,7 @@ public class SslConnectionBuilder extends ConnectionBuilder {
      * @return
      * @since 6.0.8
      */
-    public static boolean isSslChannelInitializer(ChannelHandler handler){
+    public static boolean isSslChannelInitializer(ChannelHandler handler) {
         return handler instanceof SslChannelInitializer;
     }
 
@@ -179,6 +183,12 @@ public class SslConnectionBuilder extends ConnectionBuilder {
             sslEngine.setSSLParameters(sslParams);
 
             return sslEngine;
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+            ctx.channel().attr(INIT_FAILURE).set(cause);
+            super.exceptionCaught(ctx, cause);
         }
 
     }

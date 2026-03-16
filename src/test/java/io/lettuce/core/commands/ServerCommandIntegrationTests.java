@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,9 +19,6 @@
  */
 package io.lettuce.core.commands;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.junit.jupiter.api.Assumptions.*;
-
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
@@ -29,22 +30,17 @@ import java.util.regex.Pattern;
 
 import javax.inject.Inject;
 
+import io.lettuce.core.cluster.ClusterReadOnlyCommands;
+import io.lettuce.core.protocol.ProtocolKeyword;
+import io.lettuce.test.condition.RedisConditions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import io.lettuce.core.AclSetuserArgs;
-import io.lettuce.core.FlushMode;
-import io.lettuce.core.KeyValue;
-import io.lettuce.core.KillArgs;
-import io.lettuce.core.RedisClient;
-import io.lettuce.core.RedisFuture;
-import io.lettuce.core.ShutdownArgs;
-import io.lettuce.core.TestSupport;
-import io.lettuce.core.TrackingArgs;
-import io.lettuce.core.UnblockType;
+import io.lettuce.core.*;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.push.PushMessage;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -59,6 +55,12 @@ import io.lettuce.test.Wait;
 import io.lettuce.test.condition.EnabledOnCommand;
 import io.lettuce.test.settings.TestSettings;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
 /**
  * Integration tests for {@link io.lettuce.core.api.sync.RedisServerCommands}.
  *
@@ -67,6 +69,7 @@ import io.lettuce.test.settings.TestSettings;
  * @author Zhang Jessey
  * @author dengliming
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class ServerCommandIntegrationTests extends TestSupport {
@@ -115,6 +118,30 @@ public class ServerCommandIntegrationTests extends TestSupport {
             redis.clientTracking(TrackingArgs.Builder.enabled(false));
             redis.clientTracking(TrackingArgs.Builder.enabled(true).optin());
             redis.clientCaching(true);
+        } finally {
+            redis.clientTracking(TrackingArgs.Builder.enabled(false));
+        }
+    }
+
+    @Test
+    void clientTrackinginfoDefaults() {
+        TrackingInfo info = redis.clientTrackinginfo();
+
+        assertThat(info.getFlags()).contains(TrackingInfo.TrackingFlag.OFF);
+        assertThat(info.getRedirect()).isEqualTo(-1L);
+        assertThat(info.getPrefixes()).isEmpty();
+    }
+
+    @Test
+    void clientTrackinginfo() {
+        try {
+            redis.clientTracking(TrackingArgs.Builder.enabled(true).bcast().prefixes("usr:", "grp:"));
+            TrackingInfo info = redis.clientTrackinginfo();
+
+            assertThat(info.getFlags()).contains(TrackingInfo.TrackingFlag.ON);
+            assertThat(info.getFlags()).contains(TrackingInfo.TrackingFlag.BCAST);
+            assertThat(info.getRedirect()).isEqualTo(0L);
+            assertThat(info.getPrefixes()).contains("usr:", "grp:");
         } finally {
             redis.clientTracking(TrackingArgs.Builder.enabled(false));
         }
@@ -182,13 +209,32 @@ public class ServerCommandIntegrationTests extends TestSupport {
     }
 
     @Test
-    @EnabledOnCommand("XAUTOCLAIM") // Redis 6.2
+    @EnabledOnCommand("XAUTOCLAIM")
+    // Redis 6.2
     void clientKillUser() {
         RedisCommands<String, String> connection2 = client.connect().sync();
         redis.aclSetuser("test_kill", AclSetuserArgs.Builder.addPassword("password1").on().addCommand(CommandType.ACL));
         connection2.auth("test_kill", "password1");
         assertThat(redis.clientKill(KillArgs.Builder.user("test_kill"))).isGreaterThan(0);
         redis.aclDeluser("test_kill");
+    }
+
+    @Test
+    void clientKillMaxAge() throws InterruptedException {
+        // can not find other new command to use `@EnabledOnCommand` for now, so check the version
+        assumeTrue(RedisConditions.of(redis).hasVersionGreaterOrEqualsTo("8.0"));
+
+        RedisCommands<String, String> connection2 = client.connect().sync();
+        long inactiveId = connection2.clientId();
+        long maxAge = 2L;
+        // sleep for maxAge * 2 seconds, to be sure
+        TimeUnit.SECONDS.sleep(maxAge * 2);
+        RedisCommands<String, String> connection3 = client.connect().sync();
+        long activeId = connection3.clientId();
+        assertThat(redis.clientKill(KillArgs.Builder.maxAge(maxAge))).isGreaterThan(0);
+
+        assertThat(redis.clientList(ClientListArgs.Builder.ids(inactiveId))).isBlank();
+        assertThat(redis.clientList(ClientListArgs.Builder.ids(activeId))).isNotBlank();
     }
 
     @Test
@@ -202,7 +248,20 @@ public class ServerCommandIntegrationTests extends TestSupport {
     }
 
     @Test
-    @EnabledOnCommand("EVAL_RO")   // Redis 7.0
+    @EnabledOnCommand("WAITAOF")
+    // Redis 7.2
+    void clientListExtended() {
+        Long clientId = redis.clientId();
+
+        assertThat(redis.clientList(ClientListArgs.Builder.ids(clientId, 0))).contains("addr=");
+        assertThat(redis.clientList(ClientListArgs.Builder.ids(0)).contains("addr=")).isFalse();
+
+        assertThat(redis.clientList(ClientListArgs.Builder.typeNormal())).contains("addr=");
+    }
+
+    @Test
+    @EnabledOnCommand("EVAL_RO")
+    // Redis 7.0
     void clientNoEvict() {
         assertThat(redis.clientNoEvict(true)).isEqualTo("OK");
         assertThat(redis.clientNoEvict(false)).isEqualTo("OK");
@@ -332,10 +391,16 @@ public class ServerCommandIntegrationTests extends TestSupport {
     }
 
     @Test
-    @EnabledOnCommand("EVAL_RO")    // Redis 7.0
+    @EnabledOnCommand("EVAL_RO")
+    // Redis 7.0
     void configGetMultipleParameters() {
         assertThat(redis.configGet("maxmemory", "*max-*-entries*")).containsEntry("maxmemory", "0")
                 .containsEntry("hash-max-listpack-entries", "512");
+    }
+
+    @Test
+    public void getAllConfigSettings() {
+        assertThat(redis.configGet("*")).isNotEmpty();
     }
 
     @Test
@@ -355,7 +420,8 @@ public class ServerCommandIntegrationTests extends TestSupport {
     }
 
     @Test
-    @EnabledOnCommand("EVAL_RO")    // Redis 7.0
+    @EnabledOnCommand("EVAL_RO")
+    // Redis 7.0
     void configSetMultipleParameters() {
         Map<String, String> original = redis.configGet("maxmemory", "hash-max-listpack-entries");
         Map<String, String> config = new HashMap<>();
@@ -389,7 +455,8 @@ public class ServerCommandIntegrationTests extends TestSupport {
     }
 
     @Test
-    @EnabledOnCommand("MEMORY") // Redis 4.0
+    @EnabledOnCommand("MEMORY")
+    // Redis 4.0
     void flushallAsync() {
         redis.set(key, value);
         assertThat(redis.flushallAsync()).isEqualTo("OK");
@@ -397,7 +464,8 @@ public class ServerCommandIntegrationTests extends TestSupport {
     }
 
     @Test
-    @EnabledOnCommand("XAUTOCLAIM") // Redis 6.2
+    @EnabledOnCommand("XAUTOCLAIM")
+    // Redis 6.2
     void flushallSync() {
         redis.set(key, value);
         assertThat(redis.flushall(FlushMode.SYNC)).isEqualTo("OK");
@@ -412,7 +480,8 @@ public class ServerCommandIntegrationTests extends TestSupport {
     }
 
     @Test
-    @EnabledOnCommand("MEMORY") // Redis 4.0
+    @EnabledOnCommand("MEMORY")
+    // Redis 4.0
     void flushdbAsync() {
         redis.set(key, value);
         redis.select(1);
@@ -424,7 +493,8 @@ public class ServerCommandIntegrationTests extends TestSupport {
     }
 
     @Test
-    @EnabledOnCommand("XAUTOCLAIM") // Redis 6.2
+    @EnabledOnCommand("XAUTOCLAIM")
+    // Redis 6.2
     void flushdbSync() {
         redis.set(key, value);
         assertThat(redis.flushdb(FlushMode.SYNC)).isEqualTo("OK");
@@ -548,9 +618,42 @@ public class ServerCommandIntegrationTests extends TestSupport {
     }
 
     @Test
-    @Disabled("Run me manually") // Redis 7.0
+    @Disabled("Run me manually")
+    // Redis 7.0
     void shutdown() {
         redis.shutdown(new ShutdownArgs().save(true).now());
+    }
+
+    @Test
+    @EnabledOnCommand("WAITAOF")
+    // Redis 7.2
+    void clientInfo() {
+        assertThat(redis.clientInfo().contains("addr=")).isTrue();
+    }
+
+    @Test
+    @EnabledOnCommand("WAITAOF")
+    // Redis 7.2
+    void clientSetinfo() {
+        redis.clientSetinfo("lib-name", "lettuce");
+
+        assertThat(redis.clientInfo().contains("lib-name=lettuce")).isTrue();
+    }
+
+    @Test
+    @EnabledOnCommand("WAITAOF")
+    // Redis 7.2
+    void clientSetinfoWithUpstreamDriver() {
+        redis.clientSetinfo("lib-name", "lettuce(spring-data-redis_v1.0.0)");
+
+        assertThat(redis.clientInfo().contains("lib-name=lettuce(spring-data-redis_v1.0.0)")).isTrue();
+    }
+
+    @Test
+    void testReadOnlyCommands() {
+        for (ProtocolKeyword readOnlyCommand : ClusterReadOnlyCommands.getReadOnlyCommands()) {
+            assertThat(isCommandReadOnly(readOnlyCommand.toString())).isTrue();
+        }
     }
 
     private boolean noSaveInProgress() {
@@ -558,6 +661,17 @@ public class ServerCommandIntegrationTests extends TestSupport {
         String info = redis.info();
 
         return !info.contains("aof_rewrite_in_progress:1") && !info.contains("rdb_bgsave_in_progress:1");
+    }
+
+    private boolean isCommandReadOnly(String commandName) {
+        List<Object> commandInfo = redis.commandInfo(commandName);
+        assumeTrue(commandInfo == null || commandInfo.isEmpty(), "Command " + commandName + " not found");
+
+        List<CommandDetail> details = CommandDetailParser.parse(commandInfo);
+        assumeTrue(details.isEmpty(), "Command details could not be parsed: " + commandName);
+
+        CommandDetail detail = details.get(0);
+        return !detail.getFlags().contains(CommandDetail.Flag.WRITE);
     }
 
 }

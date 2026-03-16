@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,13 +19,13 @@
  */
 package io.lettuce.core;
 
+import io.lettuce.core.api.StatefulRedisConnection;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.test.resource.DefaultRedisClient;
-import io.lettuce.test.resource.TestClientResources;
 
 /**
  * @author Will Glozer
@@ -30,7 +34,10 @@ import io.lettuce.test.resource.TestClientResources;
 public abstract class AbstractRedisClientTest extends TestSupport {
 
     protected static RedisClient client;
+
     protected RedisCommands<String, String> redis;
+
+    protected StatefulRedisConnection<String, String> statefulRedisConnection;
 
     @BeforeAll
     public static void setupClient() {
@@ -38,17 +45,13 @@ public abstract class AbstractRedisClientTest extends TestSupport {
         client.setOptions(ClientOptions.create());
     }
 
-    private static RedisClient newRedisClient() {
-        return RedisClient.create(TestClientResources.get(), RedisURI.Builder.redis(host, port).build());
-    }
-
     protected RedisCommands<String, String> connect() {
-        RedisCommands<String, String> connect = client.connect().sync();
-        return connect;
+        statefulRedisConnection = client.connect();
+        return statefulRedisConnection.sync();
     }
 
     @BeforeEach
-    public void openConnection() throws Exception {
+    public void openConnection() {
         client.setOptions(ClientOptions.builder().build());
         redis = connect();
         boolean scriptRunning;
@@ -72,9 +75,10 @@ public abstract class AbstractRedisClientTest extends TestSupport {
     }
 
     @AfterEach
-    public void closeConnection() throws Exception {
-        if (redis != null) {
-            redis.getStatefulConnection().close();
+    public void closeConnection() {
+        if (statefulRedisConnection != null) {
+            statefulRedisConnection.close();
         }
     }
+
 }

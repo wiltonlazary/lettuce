@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core.commands;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -27,6 +32,7 @@ import java.util.TreeSet;
 import javax.inject.Inject;
 
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -43,6 +49,7 @@ import io.lettuce.test.condition.RedisConditions;
  * @author Mark Paluch
  * @author dengliming
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 public class SetCommandIntegrationTests extends TestSupport {
@@ -237,7 +244,7 @@ public class SetCommandIntegrationTests extends TestSupport {
 
     @Test
     void sremNulls() {
-        assertThatThrownBy(() -> redis.srem(key, new String[0])).isInstanceOf(IllegalArgumentException. class);
+        assertThatThrownBy(() -> redis.srem(key, new String[0])).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -248,7 +255,7 @@ public class SetCommandIntegrationTests extends TestSupport {
 
     @Test
     void sunionEmpty() {
-        assertThatThrownBy(() -> redis.sunion()).isInstanceOf(IllegalArgumentException. class);
+        assertThatThrownBy(() -> redis.sunion()).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -358,7 +365,7 @@ public class SetCommandIntegrationTests extends TestSupport {
 
         Set<String> expect = new HashSet<>();
         Set<String> check = new HashSet<>();
-        setup100KeyValues(expect);
+        setup129KeyValues(expect);
 
         ValueScanCursor<String> cursor = redis.sscan(key, ScanArgs.Builder.limit(5));
 
@@ -379,18 +386,20 @@ public class SetCommandIntegrationTests extends TestSupport {
     void scanMatch() {
 
         Set<String> expect = new HashSet<>();
-        setup100KeyValues(expect);
+        setup129KeyValues(expect);
 
         ValueScanCursor<String> cursor = redis.sscan(key, ScanArgs.Builder.limit(200).match("value1*"));
 
         assertThat(cursor.getCursor()).isEqualTo("0");
         assertThat(cursor.isFinished()).isTrue();
 
-        assertThat(cursor.getValues()).hasSize(11);
+        assertThat(cursor.getValues()).hasSize(40);
     }
 
-    void setup100KeyValues(Set<String> expect) {
-        for (int i = 0; i < 100; i++) {
+    void setup129KeyValues(Set<String> expect) {
+        // Redis 7.0 introduce listpack, and `set-max-listpack-entries` is 128
+        // so we add 129 elements to convert it to hashtable
+        for (int i = 0; i < 129; i++) {
             redis.sadd(key, value + i);
             expect.add(value + i);
         }

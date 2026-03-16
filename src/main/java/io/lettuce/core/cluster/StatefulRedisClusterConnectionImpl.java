@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core.cluster;
 
+import static io.lettuce.core.ClientOptions.DEFAULT_JSON_PARSER;
 import static io.lettuce.core.protocol.CommandType.*;
 
 import java.lang.reflect.InvocationHandler;
@@ -25,6 +30,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import io.lettuce.core.AbstractRedisClient;
@@ -48,11 +54,13 @@ import io.lettuce.core.cluster.models.partitions.Partitions;
 import io.lettuce.core.cluster.models.partitions.RedisClusterNode;
 import io.lettuce.core.codec.RedisCodec;
 import io.lettuce.core.internal.LettuceAssert;
+import io.lettuce.core.json.JsonParser;
 import io.lettuce.core.protocol.CommandArgsAccessor;
 import io.lettuce.core.protocol.CompleteableCommand;
 import io.lettuce.core.protocol.ConnectionIntent;
 import io.lettuce.core.protocol.ConnectionWatchdog;
 import io.lettuce.core.protocol.RedisCommand;
+import reactor.core.publisher.Mono;
 
 /**
  * A thread-safe connection to a Redis Cluster. Multiple threads may share one {@link StatefulRedisClusterConnectionImpl}
@@ -69,6 +77,8 @@ public class StatefulRedisClusterConnectionImpl<K, V> extends RedisChannelHandle
     private final ClusterPushHandler pushHandler;
 
     protected final RedisCodec<K, V> codec;
+
+    protected final Supplier<JsonParser> parser;
 
     protected final RedisAdvancedClusterCommands<K, V> sync;
 
@@ -91,17 +101,38 @@ public class StatefulRedisClusterConnectionImpl<K, V> extends RedisChannelHandle
     public StatefulRedisClusterConnectionImpl(RedisChannelWriter writer, ClusterPushHandler pushHandler, RedisCodec<K, V> codec,
             Duration timeout) {
 
+        this(writer, pushHandler, codec, timeout, DEFAULT_JSON_PARSER);
+    }
+
+    /**
+     * Initialize a new connection.
+     *
+     * @param writer the channel writer
+     * @param pushHandler the Cluster push handler
+     * @param codec Codec used to encode/decode keys and values.
+     * @param timeout Maximum time to wait for a response.
+     * @param parser the JSON parser
+     */
+    public StatefulRedisClusterConnectionImpl(RedisChannelWriter writer, ClusterPushHandler pushHandler, RedisCodec<K, V> codec,
+            Duration timeout, Supplier<JsonParser> parser) {
+
         super(writer, timeout);
         this.pushHandler = pushHandler;
         this.codec = codec;
+        this.parser = parser;
 
         this.async = newRedisAdvancedClusterAsyncCommandsImpl();
         this.sync = newRedisAdvancedClusterCommandsImpl();
         this.reactive = newRedisAdvancedClusterReactiveCommandsImpl();
     }
 
+    @Override
+    public RedisCodec<K, V> getCodec() {
+        return codec;
+    }
+
     protected RedisAdvancedClusterReactiveCommandsImpl<K, V> newRedisAdvancedClusterReactiveCommandsImpl() {
-        return new RedisAdvancedClusterReactiveCommandsImpl<>((StatefulRedisClusterConnection<K, V>) this, codec);
+        return new RedisAdvancedClusterReactiveCommandsImpl<>((StatefulRedisClusterConnection<K, V>) this, codec, parser);
     }
 
     protected RedisAdvancedClusterCommands<K, V> newRedisAdvancedClusterCommandsImpl() {
@@ -113,7 +144,7 @@ public class StatefulRedisClusterConnectionImpl<K, V> extends RedisChannelHandle
     }
 
     protected RedisAdvancedClusterAsyncCommandsImpl<K, V> newRedisAdvancedClusterAsyncCommandsImpl() {
-        return new RedisAdvancedClusterAsyncCommandsImpl((StatefulRedisClusterConnection<K, V>) this, codec);
+        return new RedisAdvancedClusterAsyncCommandsImpl((StatefulRedisClusterConnection<K, V>) this, codec, parser);
     }
 
     @Override
@@ -231,7 +262,7 @@ public class StatefulRedisClusterConnectionImpl<K, V> extends RedisChannelHandle
 
         RedisCommand<K, V, T> local = command;
 
-        if (local.getType().name().equals(AUTH.name())) {
+        if (local.getType().toString().equals(AUTH.name())) {
             local = attachOnComplete(local, status -> {
                 if (status.equals("OK")) {
                     List<char[]> args = CommandArgsAccessor.getCharArrayArguments(command.getArgs());
@@ -248,7 +279,7 @@ public class StatefulRedisClusterConnectionImpl<K, V> extends RedisChannelHandle
             });
         }
 
-        if (local.getType().name().equals(READONLY.name())) {
+        if (local.getType().toString().equals(READONLY.name())) {
             local = attachOnComplete(local, status -> {
                 if (status.equals("OK")) {
                     this.connectionState.setReadOnly(true);
@@ -256,7 +287,7 @@ public class StatefulRedisClusterConnectionImpl<K, V> extends RedisChannelHandle
             });
         }
 
-        if (local.getType().name().equals(READWRITE.name())) {
+        if (local.getType().toString().equals(READWRITE.name())) {
             local = attachOnComplete(local, status -> {
                 if (status.equals("OK")) {
                     this.connectionState.setReadOnly(false);

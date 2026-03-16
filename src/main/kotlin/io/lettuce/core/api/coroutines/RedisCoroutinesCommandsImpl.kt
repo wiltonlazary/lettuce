@@ -1,7 +1,11 @@
 /*
- * Copyright 2020-2022 the original author or authors.
+ * Copyright 2020-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -27,9 +31,8 @@ import kotlinx.coroutines.reactive.awaitFirstOrNull
  *
  * @param <K> Key type.
  * @param <V> Value type.
- * @author Mikhael Sokolov
- * @author Mark Paluch
- * @since 6.0
+ * @author Tihomir Mateev
+ * @since 6.5
  */
 @ExperimentalLettuceCoroutinesApi
 open class RedisCoroutinesCommandsImpl<K : Any, V : Any>(
@@ -37,6 +40,7 @@ open class RedisCoroutinesCommandsImpl<K : Any, V : Any>(
 ) : RedisCoroutinesCommands<K, V>, RedisClusterCoroutinesCommands<K, V>,
     BaseRedisCoroutinesCommands<K, V> by BaseRedisCoroutinesCommandsImpl(ops),
     RedisAclCoroutinesCommands<K, V> by RedisAclCoroutinesCommandsImpl(ops),
+    RedisFunctionCoroutinesCommands<K, V> by RedisFunctionCoroutinesCommandsImpl(ops),
     RedisGeoCoroutinesCommands<K, V> by RedisGeoCoroutinesCommandsImpl(ops),
     RedisHashCoroutinesCommands<K, V> by RedisHashCoroutinesCommandsImpl(ops),
     RedisHLLCoroutinesCommands<K, V> by RedisHLLCoroutinesCommandsImpl(ops),
@@ -48,7 +52,11 @@ open class RedisCoroutinesCommandsImpl<K : Any, V : Any>(
     RedisSortedSetCoroutinesCommands<K, V> by RedisSortedSetCoroutinesCommandsImpl(ops),
     RedisStreamCoroutinesCommands<K, V> by RedisStreamCoroutinesCommandsImpl(ops),
     RedisStringCoroutinesCommands<K, V> by RedisStringCoroutinesCommandsImpl(ops),
-    RedisTransactionalCoroutinesCommands<K, V> by RedisTransactionalCoroutinesCommandsImpl(ops) {
+    RedisTransactionalCoroutinesCommands<K, V> by RedisTransactionalCoroutinesCommandsImpl(ops),
+    RedisJsonCoroutinesCommands<K, V> by RedisJsonCoroutinesCommandsImpl(ops),
+    RedisVectorSetCoroutinesCommands<K, V> by RedisVectorSetCoroutinesCommandsImpl(ops),
+    RediSearchCoroutinesCommands<K, V> by RediSearchCoroutinesCommandsImpl(ops){
+
 
     /**
      * Authenticate to the server.

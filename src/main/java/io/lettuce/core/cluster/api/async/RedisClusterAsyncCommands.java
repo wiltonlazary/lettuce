@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -19,9 +23,13 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 
+import io.lettuce.core.HotkeysArgs;
+import io.lettuce.core.HotkeysReply;
+import io.lettuce.core.MSetExArgs;
 import io.lettuce.core.Range;
 import io.lettuce.core.RedisFuture;
 import io.lettuce.core.api.async.*;
+import io.lettuce.core.json.JsonParser;
 
 /**
  * A complete asynchronous and thread-safe cluster Redis API with 400+ Methods.
@@ -32,10 +40,12 @@ import io.lettuce.core.api.async.*;
  * @author dengliming
  * @since 4.0
  */
-public interface RedisClusterAsyncCommands<K, V> extends BaseRedisAsyncCommands<K, V>, RedisAclAsyncCommands<K,V>, RedisGeoAsyncCommands<K, V>,
-        RedisHashAsyncCommands<K, V>, RedisHLLAsyncCommands<K, V>, RedisKeyAsyncCommands<K, V>, RedisListAsyncCommands<K, V>,
+public interface RedisClusterAsyncCommands<K, V> extends BaseRedisAsyncCommands<K, V>, RedisAclAsyncCommands<K, V>,
+        RedisFunctionAsyncCommands<K, V>, RedisGeoAsyncCommands<K, V>, RedisHashAsyncCommands<K, V>,
+        RedisHLLAsyncCommands<K, V>, RedisKeyAsyncCommands<K, V>, RedisListAsyncCommands<K, V>,
         RedisScriptingAsyncCommands<K, V>, RedisServerAsyncCommands<K, V>, RedisSetAsyncCommands<K, V>,
-        RedisSortedSetAsyncCommands<K, V>, RedisStreamAsyncCommands<K, V>, RedisStringAsyncCommands<K, V> {
+        RedisSortedSetAsyncCommands<K, V>, RedisStreamAsyncCommands<K, V>, RedisStringAsyncCommands<K, V>,
+        RedisJsonAsyncCommands<K, V>, RedisVectorSetAsyncCommands<K, V>, RediSearchAsyncCommands<K, V> {
 
     /**
      * Set the default timeout for operations. A zero timeout value indicates to not time out.
@@ -144,6 +154,17 @@ public interface RedisClusterAsyncCommands<K, V> extends BaseRedisAsyncCommands<
     RedisFuture<String> clusterFailover(boolean force);
 
     /**
+     * Failover a cluster node. Turns the currently connected node into a master and the master into its replica.
+     *
+     * @param force do not coordinate with master if {@code true}
+     * @param takeOver do not coordinate with the rest of the cluster if {@code true} force will take precedence over takeOver
+     *        if both are set.
+     * @return String simple-string-reply
+     * @since 6.2.3
+     */
+    RedisFuture<String> clusterFailover(boolean force, boolean takeOver);
+
+    /**
      * Delete all the slots associated with the specified node. The number of deleted slots is returned.
      *
      * @return String simple-string-reply
@@ -200,6 +221,16 @@ public interface RedisClusterAsyncCommands<K, V> extends BaseRedisAsyncCommands<
      * @return String simple-string-reply
      */
     RedisFuture<String> clusterMyId();
+
+    /**
+     * Obtain the shard ID for the currently connected node.
+     * <p>
+     * The CLUSTER MYSHARDID command returns the unique, auto-generated identifier that is associated with the shard to which
+     * the connected cluster node belongs.
+     *
+     * @return String simple-string-reply
+     */
+    RedisFuture<String> clusterMyShardId();
 
     /**
      * Obtain details about all cluster nodes. Can be parsed using
@@ -340,6 +371,17 @@ public interface RedisClusterAsyncCommands<K, V> extends BaseRedisAsyncCommands<
     RedisFuture<Boolean> msetnx(Map<K, V> map);
 
     /**
+     * Set multiple keys to multiple values with optional conditions and expiration. Emits: numkeys, pairs, then [NX|XX] and one
+     * of [EX|PX|EXAT|PXAT|KEEPTTL]. Cross-slot keys will result in multiple calls to the particular cluster nodes.
+     *
+     * @param map the map of keys and values.
+     * @param args the {@link MSetExArgs} specifying NX/XX and expiration.
+     * @return Boolean from integer-reply: {@code 1} if all keys were set, {@code 0} otherwise.
+     * @since 7.1
+     */
+    RedisFuture<Boolean> msetex(Map<K, V> map, MSetExArgs args);
+
+    /**
      * Tells a Redis cluster replica node that the client is ok reading possibly stale data and is not interested in running
      * write queries.
      *
@@ -353,5 +395,66 @@ public interface RedisClusterAsyncCommands<K, V> extends BaseRedisAsyncCommands<
      * @return String simple-string-reply
      */
     RedisFuture<String> readWrite();
+
+    /**
+     * Retrieves information about the TCP links between nodes in a Redis Cluster.
+     *
+     * @return List of maps containing attributes and values for each peer link.
+     */
+    RedisFuture<List<Map<String, Object>>> clusterLinks();
+
+    /**
+     * @return the currently configured instance of the {@link JsonParser}
+     * @since 6.5
+     */
+    JsonParser getJsonParser();
+
+    /**
+     * HOTKEYS commands are not supported on the cluster client. Use node selection API or target specific nodes via
+     * {@code getConnection(nodeId)}.
+     *
+     * @throws UnsupportedOperationException HOTKEYS is a node-specific command
+     */
+    @Override
+    default RedisFuture<String> hotkeysStart(HotkeysArgs args) {
+        throw new UnsupportedOperationException(
+                "HOTKEYS commands are not supported on cluster client. Use node selection API or target specific nodes.");
+    }
+
+    /**
+     * HOTKEYS commands are not supported on the cluster client. Use node selection API or target specific nodes via
+     * {@code getConnection(nodeId)}.
+     *
+     * @throws UnsupportedOperationException HOTKEYS is a node-specific command
+     */
+    @Override
+    default RedisFuture<String> hotkeysStop() {
+        throw new UnsupportedOperationException(
+                "HOTKEYS commands are not supported on cluster client. Use node selection API or target specific nodes.");
+    }
+
+    /**
+     * HOTKEYS commands are not supported on the cluster client. Use node selection API or target specific nodes via
+     * {@code getConnection(nodeId)}.
+     *
+     * @throws UnsupportedOperationException HOTKEYS is a node-specific command
+     */
+    @Override
+    default RedisFuture<String> hotkeysReset() {
+        throw new UnsupportedOperationException(
+                "HOTKEYS commands are not supported on cluster client. Use node selection API or target specific nodes.");
+    }
+
+    /**
+     * HOTKEYS commands are not supported on the cluster client. Use node selection API or target specific nodes via
+     * {@code getConnection(nodeId)}.
+     *
+     * @throws UnsupportedOperationException HOTKEYS is a node-specific command
+     */
+    @Override
+    default RedisFuture<HotkeysReply> hotkeysGet() {
+        throw new UnsupportedOperationException(
+                "HOTKEYS commands are not supported on cluster client. Use node selection API or target specific nodes.");
+    }
 
 }

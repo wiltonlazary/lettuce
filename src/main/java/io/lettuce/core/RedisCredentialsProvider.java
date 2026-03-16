@@ -1,22 +1,8 @@
-/*
- * Copyright 2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core;
 
 import java.util.function.Supplier;
 
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import io.lettuce.core.internal.LettuceAssert;
 
@@ -54,6 +40,34 @@ public interface RedisCredentialsProvider {
         LettuceAssert.notNull(supplier, "Supplier must not be null");
 
         return () -> Mono.fromSupplier(supplier);
+    }
+
+    /**
+     * Some implementations of the {@link RedisCredentialsProvider} may support streaming new credentials, based on some event
+     * that originates outside the driver. In this case they should indicate that so the {@link RedisAuthenticationHandler} is
+     * able to process these new credentials.
+     * 
+     * @return whether the {@link RedisCredentialsProvider} supports streaming credentials.
+     */
+    default boolean supportsStreaming() {
+        return false;
+    }
+
+    /**
+     * Returns a {@link Flux} emitting {@link RedisCredentials} that can be used to authorize a Redis connection.
+     *
+     * For implementations that support streaming credentials (as indicated by {@link #supportsStreaming()} returning
+     * {@code true}), this method can emit multiple credentials over time, typically based on external events like token renewal
+     * or rotation.
+     *
+     * For implementations that do not support streaming credentials (where {@link #supportsStreaming()} returns {@code false}),
+     * this method throws an {@link UnsupportedOperationException} by default.
+     *
+     * @return a {@link Flux} emitting {@link RedisCredentials}, or throws an exception if streaming is not supported.
+     * @throws UnsupportedOperationException if the provider does not support streaming credentials.
+     */
+    default Flux<RedisCredentials> credentials() {
+        throw new UnsupportedOperationException("Streaming credentials are not supported by this provider.");
     }
 
     /**

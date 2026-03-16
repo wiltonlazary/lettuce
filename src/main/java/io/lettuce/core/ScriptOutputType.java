@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,8 @@
  */
 package io.lettuce.core;
 
+import java.nio.ByteBuffer;
+
 /**
  * A Lua script returns one of the following types:
  *
@@ -24,6 +30,7 @@ package io.lettuce.core;
  * <li>{@link #STATUS} status string</li>
  * <li>{@link #VALUE} value</li>
  * <li>{@link #MULTI} of these types</li>
+ * <li>{@link #OBJECT} result object defined by the RESP3 response</li>
  * </ul>
  *
  * <strong>Redis to Lua</strong> conversion table.
@@ -49,5 +56,34 @@ package io.lettuce.core;
  * @author Will Glozer
  */
 public enum ScriptOutputType {
-    BOOLEAN, INTEGER, MULTI, STATUS, VALUE
+
+    /**
+     * Boolean output (expects a number {@code 0} or {@code 1} to be converted to a boolean value).
+     */
+    BOOLEAN,
+
+    /**
+     * {@link Long integer} output.
+     */
+    INTEGER,
+
+    /**
+     * List of flat arrays.
+     */
+    MULTI,
+
+    /**
+     * Simple status value such as {@code OK}. The Redis response is parsed as ASCII.
+     */
+    STATUS,
+
+    /**
+     * Value return type decoded through {@link io.lettuce.core.codec.RedisCodec#decodeValue(ByteBuffer)}.
+     */
+    VALUE,
+
+    /**
+     * RESP3-defined object output supporting all Redis response structures.
+     */
+    OBJECT
 }

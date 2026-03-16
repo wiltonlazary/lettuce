@@ -1,20 +1,6 @@
-/*
- * Copyright 2011-2022 the original author or authors.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package io.lettuce.core.commands;
 
+import static io.lettuce.TestTags.INTEGRATION_TEST;
 import static io.lettuce.test.settings.TestSettings.*;
 import static org.assertj.core.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.*;
@@ -23,8 +9,7 @@ import java.util.Arrays;
 
 import javax.inject.Inject;
 
-import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import io.lettuce.core.MigrateArgs;
@@ -42,19 +27,20 @@ import io.lettuce.test.settings.TestSettings;
 /**
  * @author Will Glozer
  * @author Mark Paluch
+ * @author Hari Mani
  */
+@Tag(INTEGRATION_TEST)
 @ExtendWith(LettuceExtension.class)
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class RunOnlyOnceServerCommandIntegrationTests extends TestSupport {
 
     private final RedisClient client;
-    private final StatefulRedisConnection<String, String> connection;
+
     private final RedisCommands<String, String> redis;
 
     @Inject
     RunOnlyOnceServerCommandIntegrationTests(RedisClient client, StatefulRedisConnection<String, String> connection) {
-
         this.client = client;
-        this.connection = connection;
         this.redis = connection.sync();
     }
 
@@ -64,19 +50,16 @@ class RunOnlyOnceServerCommandIntegrationTests extends TestSupport {
      */
     @Test
     @Disabled
+    @Order(1)
     void debugSegfault() {
-
         assumeTrue(CanConnect.to(host(), port(1)));
-
-        final RedisAsyncCommands<String, String> commands = client.connect(RedisURI.Builder.redis(host(), port(1)).build())
-                .async();
-        try {
+        final RedisURI redisURI = RedisURI.Builder.redis(host(), port(1)).build();
+        try (StatefulRedisConnection<String, String> connection = client.connect(redisURI)) {
+            final RedisAsyncCommands<String, String> commands = connection.async();
             commands.debugSegfault();
 
-            Wait.untilTrue(() -> !commands.getStatefulConnection().isOpen()).waitOrTimeout();
-            assertThat(commands.getStatefulConnection().isOpen()).isFalse();
-        } finally {
-            commands.getStatefulConnection().close();
+            Wait.untilTrue(() -> !connection.isOpen()).waitOrTimeout();
+            assertThat(connection.isOpen()).isFalse();
         }
     }
 
@@ -84,13 +67,14 @@ class RunOnlyOnceServerCommandIntegrationTests extends TestSupport {
      * Executed in order: 2
      */
     @Test
+    @Order(2)
     void migrate() {
 
-        assumeTrue(CanConnect.to(host(), port(2)));
+        assumeTrue(CanConnect.to(host(), port(7)));
 
         redis.set(key, value);
 
-        String result = redis.migrate("localhost", TestSettings.port(2), key, 0, 10);
+        String result = redis.migrate("localhost", TestSettings.port(7), key, 0, 10);
         assertThat(result).isEqualTo("OK");
     }
 
@@ -98,19 +82,20 @@ class RunOnlyOnceServerCommandIntegrationTests extends TestSupport {
      * Executed in order: 3
      */
     @Test
+    @Order(3)
     void migrateCopyReplace() {
 
-        assumeTrue(CanConnect.to(host(), port(2)));
+        assumeTrue(CanConnect.to(host(), port(7)));
 
         redis.set(key, value);
-        redis.set("key1", value);
         redis.set("key2", value);
+        redis.set("key3", value);
 
-        String result = redis.migrate("localhost", TestSettings.port(2), 0, 10, MigrateArgs.Builder.keys(key).copy().replace());
+        String result = redis.migrate("localhost", TestSettings.port(7), 0, 10, MigrateArgs.Builder.keys(key).copy().replace());
         assertThat(result).isEqualTo("OK");
 
-        result = redis.migrate("localhost", TestSettings.port(2), 0, 10, MigrateArgs.Builder
-                .keys(Arrays.asList("key1", "key2")).replace());
+        result = redis.migrate("localhost", TestSettings.port(7), 0, 10,
+                MigrateArgs.Builder.keys(Arrays.asList("key1", "key2")).replace());
         assertThat(result).isEqualTo("OK");
     }
 
@@ -119,22 +104,18 @@ class RunOnlyOnceServerCommandIntegrationTests extends TestSupport {
      * redis.
      */
     @Test
+    @Order(4)
     void shutdown() {
-
-        assumeTrue(CanConnect.to(host(), port(2)));
-
-        final RedisAsyncCommands<String, String> commands = client.connect(RedisURI.Builder.redis(host(), port(2)).build())
-                .async();
-        try {
-
+        assumeTrue(CanConnect.to(host(), port(7)));
+        final RedisURI redisURI = RedisURI.Builder.redis(host(), port(2)).build();
+        try (StatefulRedisConnection<String, String> cnxn = client.connect(redisURI)) {
+            final RedisAsyncCommands<String, String> commands = cnxn.async();
             commands.shutdown(true);
             commands.shutdown(false);
-            Wait.untilTrue(() -> !commands.getStatefulConnection().isOpen()).waitOrTimeout();
+            Wait.untilTrue(() -> !cnxn.isOpen()).waitOrTimeout();
 
-            assertThat(commands.getStatefulConnection().isOpen()).isFalse();
-
-        } finally {
-            commands.getStatefulConnection().close();
+            assertThat(cnxn.isOpen()).isFalse();
         }
     }
+
 }

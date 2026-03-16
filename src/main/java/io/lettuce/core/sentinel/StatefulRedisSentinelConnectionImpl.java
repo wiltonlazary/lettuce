@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -17,18 +21,22 @@ package io.lettuce.core.sentinel;
 
 import java.time.Duration;
 import java.util.Collection;
+import java.util.function.Supplier;
 
 import io.lettuce.core.ConnectionState;
 import io.lettuce.core.RedisChannelHandler;
 import io.lettuce.core.RedisChannelWriter;
 import io.lettuce.core.codec.RedisCodec;
 import io.lettuce.core.codec.StringCodec;
+import io.lettuce.core.json.JsonParser;
 import io.lettuce.core.output.StatusOutput;
 import io.lettuce.core.protocol.*;
 import io.lettuce.core.sentinel.api.StatefulRedisSentinelConnection;
 import io.lettuce.core.sentinel.api.async.RedisSentinelAsyncCommands;
 import io.lettuce.core.sentinel.api.reactive.RedisSentinelReactiveCommands;
 import io.lettuce.core.sentinel.api.sync.RedisSentinelCommands;
+
+import static io.lettuce.core.ClientOptions.DEFAULT_JSON_PARSER;
 
 /**
  * @author Mark Paluch
@@ -46,14 +54,34 @@ public class StatefulRedisSentinelConnectionImpl<K, V> extends RedisChannelHandl
 
     private final SentinelConnectionState connectionState = new SentinelConnectionState();
 
+    /**
+     * Initialize a new Sentinel connection
+     * 
+     * @param writer the writer used to write commands
+     * @param codec Codec used to encode/decode keys and values.
+     * @param timeout Maximum time to wait for a response.
+     */
     public StatefulRedisSentinelConnectionImpl(RedisChannelWriter writer, RedisCodec<K, V> codec, Duration timeout) {
+        this(writer, codec, timeout, DEFAULT_JSON_PARSER);
+    }
+
+    /**
+     * Initialize a new Sentinel connection
+     * 
+     * @param writer the writer used to write commands
+     * @param codec Codec used to encode/decode keys and values.
+     * @param timeout Maximum time to wait for a response.
+     * @param parser the parser used to parse JSON responses
+     */
+    public StatefulRedisSentinelConnectionImpl(RedisChannelWriter writer, RedisCodec<K, V> codec, Duration timeout,
+            Supplier<JsonParser> parser) {
 
         super(writer, timeout);
 
         this.codec = codec;
         this.async = new RedisSentinelAsyncCommandsImpl<>(this, codec);
         this.sync = syncHandler(async, RedisSentinelCommands.class);
-        this.reactive = new RedisSentinelReactiveCommandsImpl<>(this, codec);
+        this.reactive = new RedisSentinelReactiveCommandsImpl<>(this, codec, parser);
     }
 
     @Override
@@ -98,6 +126,11 @@ public class StatefulRedisSentinelConnectionImpl<K, V> extends RedisChannelHandl
 
     public ConnectionState getConnectionState() {
         return connectionState;
+    }
+
+    @Override
+    public RedisCodec<K, V> getCodec() {
+        return codec;
     }
 
     static class SentinelConnectionState extends ConnectionState {

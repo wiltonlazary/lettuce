@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -81,12 +85,6 @@ interface ClusterConnectionProvider extends Closeable {
      * @since 5.1
      */
     CompletableFuture<Void> closeAsync();
-
-    /**
-     * Reset the writer state. Queued commands will be canceled and the internal state will be reset. This is useful when the
-     * internal state machine gets out of sync with the connection.
-     */
-    void reset();
 
     /**
      * Close connections that are not in use anymore/not part of the cluster.

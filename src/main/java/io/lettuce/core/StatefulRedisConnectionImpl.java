@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -15,6 +19,7 @@
  */
 package io.lettuce.core;
 
+import static io.lettuce.core.ClientOptions.DEFAULT_JSON_PARSER;
 import static io.lettuce.core.protocol.CommandType.*;
 
 import java.time.Duration;
@@ -22,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -32,9 +38,11 @@ import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.cluster.api.sync.RedisClusterCommands;
 import io.lettuce.core.codec.RedisCodec;
 import io.lettuce.core.codec.StringCodec;
+import io.lettuce.core.json.JsonParser;
 import io.lettuce.core.output.MultiOutput;
 import io.lettuce.core.output.StatusOutput;
 import io.lettuce.core.protocol.*;
+import reactor.core.publisher.Mono;
 
 /**
  * A thread-safe connection to a Redis server. Multiple threads may share one {@link StatefulRedisConnectionImpl}
@@ -60,7 +68,11 @@ public class StatefulRedisConnectionImpl<K, V> extends RedisChannelHandler<K, V>
 
     private final PushHandler pushHandler;
 
+    private final Supplier<JsonParser> parser;
+
     protected MultiOutput<K, V> multi;
+
+    private RedisAuthenticationHandler<K, V> authHandler = RedisAuthenticationHandler.createDefaultAuthenticationHandler();
 
     /**
      * Initialize a new connection.
@@ -72,16 +84,32 @@ public class StatefulRedisConnectionImpl<K, V> extends RedisChannelHandler<K, V>
      */
     public StatefulRedisConnectionImpl(RedisChannelWriter writer, PushHandler pushHandler, RedisCodec<K, V> codec,
             Duration timeout) {
+        this(writer, pushHandler, codec, timeout, DEFAULT_JSON_PARSER);
+    }
+
+    /**
+     * Initialize a new connection.
+     *
+     * @param writer the channel writer.
+     * @param pushHandler the handler for push notifications.
+     * @param codec Codec used to encode/decode keys and values.
+     * @param timeout Maximum time to wait for a response.
+     * @param parser the parser to use for JSON commands.
+     */
+    public StatefulRedisConnectionImpl(RedisChannelWriter writer, PushHandler pushHandler, RedisCodec<K, V> codec,
+            Duration timeout, Supplier<JsonParser> parser) {
 
         super(writer, timeout);
 
         this.pushHandler = pushHandler;
         this.codec = codec;
+        this.parser = parser;
         this.async = newRedisAsyncCommandsImpl();
         this.sync = newRedisSyncCommandsImpl();
         this.reactive = newRedisReactiveCommandsImpl();
     }
 
+    @Override
     public RedisCodec<K, V> getCodec() {
         return codec;
     }
@@ -106,7 +134,7 @@ public class StatefulRedisConnectionImpl<K, V> extends RedisChannelHandler<K, V>
      * @return a new instance
      */
     protected RedisAsyncCommandsImpl<K, V> newRedisAsyncCommandsImpl() {
-        return new RedisAsyncCommandsImpl<>(this, codec);
+        return new RedisAsyncCommandsImpl<>(this, codec, parser);
     }
 
     @Override
@@ -120,7 +148,7 @@ public class StatefulRedisConnectionImpl<K, V> extends RedisChannelHandler<K, V>
      * @return a new instance
      */
     protected RedisReactiveCommandsImpl<K, V> newRedisReactiveCommandsImpl() {
-        return new RedisReactiveCommandsImpl<>(this, codec);
+        return new RedisReactiveCommandsImpl<>(this, codec, parser);
     }
 
     @Override
@@ -157,48 +185,52 @@ public class StatefulRedisConnectionImpl<K, V> extends RedisChannelHandler<K, V>
     public <T> RedisCommand<K, V, T> dispatch(RedisCommand<K, V, T> command) {
 
         RedisCommand<K, V, T> toSend = preProcessCommand(command);
+        RedisCommand<K, V, T> result = super.dispatch(toSend);
+        RedisCommand<K, V, T> finalCommand = postProcessCommand(result);
 
-        potentiallyEnableMulti(command);
-
-        return super.dispatch(toSend);
+        return finalCommand;
     }
 
     @Override
     public Collection<RedisCommand<K, V, ?>> dispatch(Collection<? extends RedisCommand<K, V, ?>> commands) {
 
+        Collection<RedisCommand<K, V, ?>> sentCommands = preProcessCommands(commands);
+
+        Collection<RedisCommand<K, V, ?>> dispatchedCommands = super.dispatch(sentCommands);
+
+        return this.postProcessCommands(dispatchedCommands);
+    }
+
+    protected Collection<RedisCommand<K, V, ?>> postProcessCommands(Collection<RedisCommand<K, V, ?>> commands) {
+        authHandler.postProcess(commands);
+        return commands;
+    }
+
+    protected <T> RedisCommand<K, V, T> postProcessCommand(RedisCommand<K, V, T> command) {
+        authHandler.postProcess(command);
+        return command;
+    }
+
+    protected Collection<RedisCommand<K, V, ?>> preProcessCommands(Collection<? extends RedisCommand<K, V, ?>> commands) {
         List<RedisCommand<K, V, ?>> sentCommands = new ArrayList<>(commands.size());
 
         commands.forEach(o -> {
-            RedisCommand<K, V, ?> command = preProcessCommand(o);
-
-            sentCommands.add(command);
-            potentiallyEnableMulti(command);
+            RedisCommand<K, V, ?> preprocessed = preProcessCommand(o);
+            sentCommands.add(preprocessed);
         });
 
-        return super.dispatch(sentCommands);
+        return sentCommands;
     }
 
-    private void potentiallyEnableMulti(RedisCommand<K, V, ?> command) {
-
-        if (command.getType().name().equals(MULTI.name())) {
-
-            multi = (multi == null ? new MultiOutput<>(codec) : multi);
-
-            if (command instanceof CompleteableCommand) {
-                ((CompleteableCommand<?>) command).onComplete((ignored, e) -> {
-                    if (e != null) {
-                        multi = null;
-                    }
-                });
-            }
-        }
-    }
-
+    // TODO [tihomir.mateev] Refactor to include as part of the Command interface
+    // All these if statements clearly indicate this is a problem best solve by each command
+    // (defining a pre and post processing behaviour of the command)
     protected <T> RedisCommand<K, V, T> preProcessCommand(RedisCommand<K, V, T> command) {
 
         RedisCommand<K, V, T> local = command;
+        String commandType = command.getType().toString();
 
-        if (local.getType().name().equals(AUTH.name())) {
+        if (commandType.equals(AUTH.name())) {
             local = attachOnComplete(local, status -> {
                 if ("OK".equals(status)) {
 
@@ -215,7 +247,7 @@ public class StatefulRedisConnectionImpl<K, V> extends RedisChannelHandler<K, V>
             });
         }
 
-        if (local.getType().name().equals(SELECT.name())) {
+        if (commandType.equals(SELECT.name())) {
             local = attachOnComplete(local, status -> {
                 if ("OK".equals(status)) {
                     Long db = CommandArgsAccessor.getFirstInteger(command.getArgs());
@@ -226,7 +258,7 @@ public class StatefulRedisConnectionImpl<K, V> extends RedisChannelHandler<K, V>
             });
         }
 
-        if (local.getType().name().equals(READONLY.name())) {
+        if (commandType.equals(READONLY.name())) {
             local = attachOnComplete(local, status -> {
                 if ("OK".equals(status)) {
                     state.setReadOnly(true);
@@ -234,7 +266,7 @@ public class StatefulRedisConnectionImpl<K, V> extends RedisChannelHandler<K, V>
             });
         }
 
-        if (local.getType().name().equals(READWRITE.name())) {
+        if (commandType.equals(READWRITE.name())) {
             local = attachOnComplete(local, status -> {
                 if ("OK".equals(status)) {
                     state.setReadOnly(false);
@@ -242,14 +274,14 @@ public class StatefulRedisConnectionImpl<K, V> extends RedisChannelHandler<K, V>
             });
         }
 
-        if (local.getType().name().equals(DISCARD.name())) {
+        if (commandType.equals(DISCARD.name())) {
             if (multi != null) {
                 multi.cancel();
                 multi = null;
             }
         }
 
-        if (local.getType().name().equals(EXEC.name())) {
+        if (commandType.equals(EXEC.name())) {
             MultiOutput<K, V> multiOutput = this.multi;
             this.multi = null;
             if (multiOutput == null) {
@@ -258,10 +290,26 @@ public class StatefulRedisConnectionImpl<K, V> extends RedisChannelHandler<K, V>
             local.setOutput((MultiOutput) multiOutput);
         }
 
-        if (multi != null && !local.getType().name().equals(MULTI.name())) {
+        if (multi != null && !commandType.equals(MULTI.name()) && !commandType.equals(WATCH.name())) {
+            // ignore MULTI and WATCH commands nested in another MULTI
             local = new TransactionalCommand<>(local);
             multi.add(local);
         }
+
+        if (commandType.equals(MULTI.name())) {
+            authHandler.startTransaction();
+            multi = (multi == null ? new MultiOutput<>(codec) : multi);
+
+            if (command instanceof CompleteableCommand) {
+                ((CompleteableCommand<?>) command).onComplete((ignored, e) -> {
+                    if (e != null) {
+                        multi = null;
+                        authHandler.endTransaction();
+                    }
+                });
+            }
+        }
+
         return local;
     }
 
@@ -291,6 +339,24 @@ public class StatefulRedisConnectionImpl<K, V> extends RedisChannelHandler<K, V>
 
     public ConnectionState getConnectionState() {
         return state;
+    }
+
+    @Override
+    public void activated() {
+        super.activated();
+        authHandler.subscribe();
+    }
+
+    @Override
+    public void deactivated() {
+        authHandler.unsubscribe();
+        super.deactivated();
+    }
+
+    public void setAuthenticationHandler(RedisAuthenticationHandler<K, V> handler) {
+        if (handler != null) {
+            authHandler = handler;
+        }
     }
 
 }

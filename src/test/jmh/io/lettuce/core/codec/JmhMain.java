@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -28,12 +32,14 @@ import org.openjdk.jmh.runner.options.TimeValue;
  * Manual JMH Test Launcher.
  *
  * @author Mark Paluch
+ * @author shikharid
  */
 public class JmhMain {
 
     public static void main(String... args) throws RunnerException {
 
-        runCommandBenchmark();
+        //runCommandBenchmark();
+        runExactVsEstimatedSizeEncoderBenchmark();
     }
 
     private static void runCommandBenchmark() throws RunnerException {
@@ -41,6 +47,21 @@ public class JmhMain {
         new Runner(prepareOptions().mode(Mode.AverageTime) //
                 .timeUnit(TimeUnit.NANOSECONDS) //
                 .include(".*CodecBenchmark.*") //
+                .build()).run();
+    }
+
+    private static void runExactVsEstimatedSizeEncoderBenchmark() throws RunnerException {
+
+        // measure time-per-op
+        new Runner(prepareOptions().mode(Mode.AverageTime).timeUnit(TimeUnit.NANOSECONDS)
+                .include(".*ExactVsEstimatedSizeCodecBenchmark.*")
+                .addProfiler("gc")
+                .build()).run();
+
+        // measure thrpt (ops/sec)
+        new Runner(prepareOptions().mode(Mode.Throughput).timeUnit(TimeUnit.SECONDS)
+                .include(".*ExactVsEstimatedSizeCodecBenchmark.*")
+                .addProfiler("gc")
                 .build()).run();
     }
 

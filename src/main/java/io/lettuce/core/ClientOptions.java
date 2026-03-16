@@ -1,7 +1,11 @@
 /*
- * Copyright 2011-2022 the original author or authors.
+ * Copyright 2011-Present, Redis Ltd. and Contributors
+ * All rights reserved.
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
+ * Licensed under the MIT License.
+ *
+ * This file contains contributions from third-party contributors
+ * licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
@@ -18,30 +22,47 @@ package io.lettuce.core;
 import java.io.Serializable;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Iterator;
+import java.util.ServiceConfigurationError;
+import java.util.ServiceLoader;
+import java.util.function.Predicate;
+import java.util.function.Supplier;
 
-import io.lettuce.core.api.StatefulConnection;
 import io.lettuce.core.internal.LettuceAssert;
+import io.lettuce.core.json.JsonParser;
+import io.lettuce.core.json.RedisJsonException;
 import io.lettuce.core.protocol.DecodeBufferPolicies;
 import io.lettuce.core.protocol.DecodeBufferPolicy;
 import io.lettuce.core.protocol.ProtocolVersion;
+import io.lettuce.core.protocol.ReadOnlyCommands;
+import io.lettuce.core.protocol.RedisCommand;
 import io.lettuce.core.resource.ClientResources;
+import reactor.core.publisher.Mono;
 
 /**
  * Client Options to control the behavior of {@link RedisClient}.
  *
  * @author Mark Paluch
  * @author Gavin Cook
+ * @author Jim Brunner
  */
 @SuppressWarnings("serial")
 public class ClientOptions implements Serializable {
 
     public static final boolean DEFAULT_AUTO_RECONNECT = true;
 
+    public static final MaintNotificationsConfig DEFAULT_MAINT_NOTIFICATIONS_CONFIG = MaintNotificationsConfig.enabled();
+
+    protected static final MaintNotificationsConfig MAINT_NOTIFICATIONS_CONFIG_INITIAL = MaintNotificationsConfig
+            .copyOf(DEFAULT_MAINT_NOTIFICATIONS_CONFIG);
+
+    public static final Predicate<RedisCommand<?, ?, ?>> DEFAULT_REPLAY_FILTER = (cmd) -> false;
+
     public static final int DEFAULT_BUFFER_USAGE_RATIO = 3;
 
-    public static final boolean DEFAULT_CANCEL_CMD_RECONNECT_FAIL = false;
-
     public static final DisconnectedBehavior DEFAULT_DISCONNECTED_BEHAVIOR = DisconnectedBehavior.DEFAULT;
+
+    public static final ReauthenticateBehavior DEFAULT_REAUTHENTICATE_BEHAVIOUR = ReauthenticateBehavior.DEFAULT;
 
     public static final boolean DEFAULT_PUBLISH_ON_SCHEDULER = false;
 
@@ -49,25 +70,43 @@ public class ClientOptions implements Serializable {
 
     public static final ProtocolVersion DEFAULT_PROTOCOL_VERSION = ProtocolVersion.newestSupported();
 
+    public static final ReadOnlyCommands.ReadOnlyPredicate DEFAULT_READ_ONLY_COMMANDS = ReadOnlyCommands.asPredicate();
+
     public static final int DEFAULT_REQUEST_QUEUE_SIZE = Integer.MAX_VALUE;
 
     public static final Charset DEFAULT_SCRIPT_CHARSET = StandardCharsets.UTF_8;
 
     public static final SocketOptions DEFAULT_SOCKET_OPTIONS = SocketOptions.create();
 
+    public static final Supplier<JsonParser> DEFAULT_JSON_PARSER = () -> {
+        try {
+            Iterator<JsonParser> services = ServiceLoader.load(JsonParser.class).iterator();
+            return services.hasNext() ? services.next() : null;
+        } catch (ServiceConfigurationError e) {
+            throw new RedisJsonException("Could not load JsonParser, please consult the guide"
+                    + "at https://redis.github.io/lettuce/user-guide/redis-json/", e);
+        }
+    };
+
     public static final SslOptions DEFAULT_SSL_OPTIONS = SslOptions.create();
 
     public static final boolean DEFAULT_SUSPEND_RECONNECT_PROTO_FAIL = false;
 
-    public static final TimeoutOptions DEFAULT_TIMEOUT_OPTIONS = TimeoutOptions.create();
+    public static final TimeoutOptions DEFAULT_TIMEOUT_OPTIONS = TimeoutOptions.enabled();
+
+    public static final boolean DEFAULT_USE_HASH_INDEX_QUEUE = true;
 
     private final boolean autoReconnect;
 
-    private final boolean cancelCommandsOnReconnectFailure;
+    private final MaintNotificationsConfig maintNotificationsConfig;
+
+    private final Predicate<RedisCommand<?, ?, ?>> replayFilter;
 
     private final DecodeBufferPolicy decodeBufferPolicy;
 
     private final DisconnectedBehavior disconnectedBehavior;
+
+    private final ReauthenticateBehavior reauthenticateBehavior;
 
     private final boolean publishOnScheduler;
 
@@ -75,9 +114,13 @@ public class ClientOptions implements Serializable {
 
     private final ProtocolVersion protocolVersion;
 
+    private final ReadOnlyCommands.ReadOnlyPredicate readOnlyCommands;
+
     private final int requestQueueSize;
 
     private final Charset scriptCharset;
+
+    private final Supplier<JsonParser> jsonParser;
 
     private final SocketOptions socketOptions;
 
@@ -87,37 +130,48 @@ public class ClientOptions implements Serializable {
 
     private final TimeoutOptions timeoutOptions;
 
+    private final boolean useHashIndexedQueue;
 
     protected ClientOptions(Builder builder) {
         this.autoReconnect = builder.autoReconnect;
-        this.cancelCommandsOnReconnectFailure = builder.cancelCommandsOnReconnectFailure;
+        this.maintNotificationsConfig = builder.maintNotificationsConfig;
+        this.replayFilter = builder.replayFilter;
         this.decodeBufferPolicy = builder.decodeBufferPolicy;
         this.disconnectedBehavior = builder.disconnectedBehavior;
+        this.reauthenticateBehavior = builder.reauthenticateBehavior;
         this.publishOnScheduler = builder.publishOnScheduler;
         this.pingBeforeActivateConnection = builder.pingBeforeActivateConnection;
         this.protocolVersion = builder.protocolVersion;
+        this.readOnlyCommands = builder.readOnlyCommands;
         this.requestQueueSize = builder.requestQueueSize;
         this.scriptCharset = builder.scriptCharset;
+        this.jsonParser = builder.jsonParser;
         this.socketOptions = builder.socketOptions;
         this.sslOptions = builder.sslOptions;
         this.suspendReconnectOnProtocolFailure = builder.suspendReconnectOnProtocolFailure;
         this.timeoutOptions = builder.timeoutOptions;
+        this.useHashIndexedQueue = builder.useHashIndexedQueue;
     }
 
     protected ClientOptions(ClientOptions original) {
         this.autoReconnect = original.isAutoReconnect();
-        this.cancelCommandsOnReconnectFailure = original.isCancelCommandsOnReconnectFailure();
+        this.maintNotificationsConfig = original.getMaintNotificationsConfig();
+        this.replayFilter = original.getReplayFilter();
         this.decodeBufferPolicy = original.getDecodeBufferPolicy();
         this.disconnectedBehavior = original.getDisconnectedBehavior();
+        this.reauthenticateBehavior = original.getReauthenticateBehaviour();
         this.publishOnScheduler = original.isPublishOnScheduler();
         this.pingBeforeActivateConnection = original.isPingBeforeActivateConnection();
         this.protocolVersion = original.getConfiguredProtocolVersion();
+        this.readOnlyCommands = original.getReadOnlyCommands();
         this.requestQueueSize = original.getRequestQueueSize();
         this.scriptCharset = original.getScriptCharset();
+        this.jsonParser = original.getJsonParser();
         this.socketOptions = original.getSocketOptions();
         this.sslOptions = original.getSslOptions();
         this.suspendReconnectOnProtocolFailure = original.isSuspendReconnectOnProtocolFailure();
         this.timeoutOptions = original.getTimeoutOptions();
+        this.useHashIndexedQueue = original.isUseHashIndexedQueue();
     }
 
     /**
@@ -155,7 +209,9 @@ public class ClientOptions implements Serializable {
 
         private boolean autoReconnect = DEFAULT_AUTO_RECONNECT;
 
-        private boolean cancelCommandsOnReconnectFailure = DEFAULT_CANCEL_CMD_RECONNECT_FAIL;
+        private MaintNotificationsConfig maintNotificationsConfig = MAINT_NOTIFICATIONS_CONFIG_INITIAL;
+
+        private Predicate<RedisCommand<?, ?, ?>> replayFilter = DEFAULT_REPLAY_FILTER;
 
         private DecodeBufferPolicy decodeBufferPolicy = DecodeBufferPolicies.ratio(DEFAULT_BUFFER_USAGE_RATIO);
 
@@ -167,9 +223,13 @@ public class ClientOptions implements Serializable {
 
         private boolean publishOnScheduler = DEFAULT_PUBLISH_ON_SCHEDULER;
 
+        private ReadOnlyCommands.ReadOnlyPredicate readOnlyCommands = DEFAULT_READ_ONLY_COMMANDS;
+
         private int requestQueueSize = DEFAULT_REQUEST_QUEUE_SIZE;
 
         private Charset scriptCharset = DEFAULT_SCRIPT_CHARSET;
+
+        private Supplier<JsonParser> jsonParser = DEFAULT_JSON_PARSER;
 
         private SocketOptions socketOptions = DEFAULT_SOCKET_OPTIONS;
 
@@ -178,6 +238,10 @@ public class ClientOptions implements Serializable {
         private boolean suspendReconnectOnProtocolFailure = DEFAULT_SUSPEND_RECONNECT_PROTO_FAIL;
 
         private TimeoutOptions timeoutOptions = DEFAULT_TIMEOUT_OPTIONS;
+
+        private ReauthenticateBehavior reauthenticateBehavior = DEFAULT_REAUTHENTICATE_BEHAVIOUR;
+
+        private boolean useHashIndexedQueue = DEFAULT_USE_HASH_INDEX_QUEUE;
 
         protected Builder() {
         }
@@ -195,37 +259,32 @@ public class ClientOptions implements Serializable {
         }
 
         /**
-         * Allows cancelling queued commands in case a reconnect fails.Defaults to {@code false}. See
-         * {@link #DEFAULT_CANCEL_CMD_RECONNECT_FAIL}. <b>This flag is deprecated and should not be used as it can lead to race
-         * conditions and protocol offsets. The reason is that it internally calls reset() which causes a protocol offset.</b>
-         * See {@link StatefulConnection#reset}
+         * Configure whether the driver should listen for server events that notify on current maintenance activities. When
+         * enabled, this option will help with the connection handover and reduce the number of failed commands. This feature
+         * requires the server to support maintenance events. Defaults to {@code false}. See
+         * {@link #DEFAULT_MAINT_NOTIFICATIONS_CONFIG}.
          *
-         * @param cancelCommandsOnReconnectFailure true/false
+         * @param maintNotificationsConfig true/false
          * @return {@code this}
-         * @deprecated since 6.2, to be removed with 7.0. This feature is unsafe and may cause protocol offsets if true (i.e.
-         *             Redis commands are completed with previous command values).
+         * @since 7.0
          */
-        @Deprecated
-        public Builder cancelCommandsOnReconnectFailure(boolean cancelCommandsOnReconnectFailure) {
-            this.cancelCommandsOnReconnectFailure = cancelCommandsOnReconnectFailure;
+        public Builder maintNotificationsConfig(MaintNotificationsConfig maintNotificationsConfig) {
+            this.maintNotificationsConfig = maintNotificationsConfig;
             return this;
         }
 
         /**
-         * Buffer usage ratio for {@link io.lettuce.core.protocol.CommandHandler}. This ratio controls how often bytes are
-         * discarded during decoding. In particular, when buffer usage reaches {@code bufferUsageRatio / bufferUsageRatio + 1}.
-         * E.g. setting {@code bufferUsageRatio} to {@literal 3}, will discard read bytes once the buffer usage reaches 75
-         * percent. See {@link #DEFAULT_BUFFER_USAGE_RATIO}.
+         * When {@link #autoReconnect(boolean)} is set to true, this {@link Predicate} is used to filter commands to replay when
+         * the connection is reestablished after a disconnect. Returning <code>false</code> means the command will not be
+         * filtered out and will be replayed. Defaults to replaying all queued commands.
          *
-         * @param bufferUsageRatio the buffer usage ratio. Must be between {@code 0} and {@code 2^31-1}, typically a value
-         *        between 1 and 10 representing 50% to 90%.
+         * @param replayFilter a {@link Predicate} to filter commands to replay. Must not be {@code null}.
+         * @see #DEFAULT_REPLAY_FILTER
          * @return {@code this}
-         * @since 5.2
-         * @deprecated since 6.0 in favor of {@link DecodeBufferPolicy}.
+         * @since 6.6
          */
-        @Deprecated
-        public Builder bufferUsageRatio(int bufferUsageRatio) {
-            this.decodeBufferPolicy = DecodeBufferPolicies.ratio(bufferUsageRatio);
+        public Builder replayFilter(Predicate<RedisCommand<?, ?, ?>> replayFilter) {
+            this.replayFilter = replayFilter;
             return this;
         }
 
@@ -234,8 +293,8 @@ public class ClientOptions implements Serializable {
          *
          * @param policy the policy to use in {@link io.lettuce.core.protocol.CommandHandler}
          * @return {@code this}
-         * @since 6.0
          * @see DecodeBufferPolicies
+         * @since 6.0
          */
         public Builder decodeBufferPolicy(DecodeBufferPolicy policy) {
 
@@ -259,9 +318,29 @@ public class ClientOptions implements Serializable {
         }
 
         /**
-         * Sets the {@literal PING} before activate connection flag. Defaults to {@code true}. See
-         * {@link #DEFAULT_PING_BEFORE_ACTIVATE_CONNECTION}. This option has no effect unless forcing to use the RESP 2 protocol
-         * version.
+         * Configure the {@link ReauthenticateBehavior} of the Lettuce driver. Defaults to
+         * {@link ReauthenticateBehavior#DEFAULT}.
+         *
+         * @param reauthenticateBehavior the {@link ReauthenticateBehavior} to use. Must not be {@code null}.
+         * @return {@code this}
+         */
+        public Builder reauthenticateBehavior(ReauthenticateBehavior reauthenticateBehavior) {
+
+            LettuceAssert.notNull(reauthenticateBehavior, "ReuthenticatBehavior must not be null");
+            this.reauthenticateBehavior = reauthenticateBehavior;
+            return this;
+        }
+
+        /**
+         * Perform a lightweight {@literal PING} connection handshake when establishing a Redis connection. If {@code true}
+         * (default is {@code true}, {@link #DEFAULT_PING_BEFORE_ACTIVATE_CONNECTION}), every connection and reconnect will
+         * issue a {@literal PING} command and await its response before the connection is activated and enabled for use. If the
+         * check fails, the connect/reconnect is treated as a failure. This option has no effect unless forced to use the RESP 2
+         * protocol version. RESP 3/protocol discovery performs a {@code HELLO} handshake.
+         * <p>
+         *
+         * The {@literal PING} handshake validates whether the other end of the connected socket is a service that behaves like
+         * a Redis server.
          *
          * @param pingBeforeActivateConnection true/false
          * @return {@code this}
@@ -276,8 +355,8 @@ public class ClientOptions implements Serializable {
          *
          * @param protocolVersion version to use.
          * @return {@code this}
-         * @since 6.0
          * @see ProtocolVersion#newestSupported()
+         * @since 6.0
          */
         public Builder protocolVersion(ProtocolVersion protocolVersion) {
 
@@ -291,17 +370,32 @@ public class ClientOptions implements Serializable {
          * <p>
          * A single Redis connection operates on a single thread. Operations that require a significant amount of processing can
          * lead to a single-threaded-like behavior for all consumers of the Redis connection. When enabled, data signals will be
-         * emitted using a different thread served by {@link ClientResources#eventExecutorGroup()}. Defaults to {@code false}
-         * , see {@link #DEFAULT_PUBLISH_ON_SCHEDULER}.
+         * emitted using a different thread served by {@link ClientResources#eventExecutorGroup()}. Defaults to {@code false} ,
+         * see {@link #DEFAULT_PUBLISH_ON_SCHEDULER}.
          *
          * @param publishOnScheduler true/false
          * @return {@code this}
-         * @since 5.2
          * @see org.reactivestreams.Subscriber#onNext(Object)
          * @see ClientResources#eventExecutorGroup()
+         * @since 5.2
          */
         public Builder publishOnScheduler(boolean publishOnScheduler) {
             this.publishOnScheduler = publishOnScheduler;
+            return this;
+        }
+
+        /**
+         * Identifies commands (e.g. module commands) as read-only. Defaults {@link #DEFAULT_READ_ONLY_COMMANDS}, see
+         * {@link ReadOnlyCommands}.
+         *
+         * @param readOnlyCommands must not be {@code null}.
+         * @return {@code this}
+         * @see 6.2.4
+         */
+        public Builder readOnlyCommands(ReadOnlyCommands.ReadOnlyPredicate readOnlyCommands) {
+
+            LettuceAssert.notNull(readOnlyCommands, "readOnlyCommands must not be null");
+            this.readOnlyCommands = readOnlyCommands;
             return this;
         }
 
@@ -320,7 +414,6 @@ public class ClientOptions implements Serializable {
             return this;
         }
 
-
         /**
          * Sets the Lua script {@link Charset} to use to encode {@link String scripts} to {@code byte[]}. Defaults to
          * {@link StandardCharsets#UTF_8}. See {@link #DEFAULT_SCRIPT_CHARSET}.
@@ -333,6 +426,21 @@ public class ClientOptions implements Serializable {
 
             LettuceAssert.notNull(scriptCharset, "ScriptCharset must not be null");
             this.scriptCharset = scriptCharset;
+            return this;
+        }
+
+        /**
+         * Set a custom implementation for the {@link JsonParser} to use.
+         *
+         * @param parser a {@link Mono} that emits the {@link JsonParser} to use.
+         * @return {@code this}
+         * @see JsonParser
+         * @since 6.5
+         */
+        public Builder jsonParser(Supplier<JsonParser> parser) {
+
+            LettuceAssert.notNull(parser, "JsonParser must not be null");
+            this.jsonParser = parser;
             return this;
         }
 
@@ -390,6 +498,20 @@ public class ClientOptions implements Serializable {
         }
 
         /**
+         * Use hash indexed queue, which provides O(1) remove(Object) thus won't cause blocking issues.
+         *
+         * @param useHashIndexedQueue true/false
+         * @return {@code this}
+         * @see io.lettuce.core.protocol.CommandHandler.AddToStack
+         * @since 6.6
+         */
+        @SuppressWarnings("JavadocReference")
+        public Builder useHashIndexQueue(boolean useHashIndexedQueue) {
+            this.useHashIndexedQueue = useHashIndexedQueue;
+            return this;
+        }
+
+        /**
          * Create a new instance of {@link ClientOptions}.
          *
          * @return new instance of {@link ClientOptions}
@@ -406,27 +528,27 @@ public class ClientOptions implements Serializable {
      *
      * @return a {@link ClientOptions.Builder} to create new {@link ClientOptions} whose settings are replicated from the
      *         current {@link ClientOptions}.
-     *
      * @since 5.1
      */
     public ClientOptions.Builder mutate() {
         Builder builder = new Builder();
 
-        builder.autoReconnect(isAutoReconnect())
-                .cancelCommandsOnReconnectFailure(isCancelCommandsOnReconnectFailure())
-                .decodeBufferPolicy(getDecodeBufferPolicy()).disconnectedBehavior(getDisconnectedBehavior())
-                .publishOnScheduler(isPublishOnScheduler()).pingBeforeActivateConnection(isPingBeforeActivateConnection())
-                .protocolVersion(getConfiguredProtocolVersion()).requestQueueSize(getRequestQueueSize())
-                .scriptCharset(getScriptCharset()).socketOptions(getSocketOptions()).sslOptions(getSslOptions())
+        builder.autoReconnect(isAutoReconnect()).maintNotificationsConfig(getMaintNotificationsConfig())
+                .replayFilter(getReplayFilter()).decodeBufferPolicy(getDecodeBufferPolicy())
+                .disconnectedBehavior(getDisconnectedBehavior()).reauthenticateBehavior(getReauthenticateBehaviour())
+                .readOnlyCommands(getReadOnlyCommands()).publishOnScheduler(isPublishOnScheduler())
+                .pingBeforeActivateConnection(isPingBeforeActivateConnection()).protocolVersion(getConfiguredProtocolVersion())
+                .requestQueueSize(getRequestQueueSize()).scriptCharset(getScriptCharset()).jsonParser(getJsonParser())
+                .socketOptions(getSocketOptions()).sslOptions(getSslOptions())
                 .suspendReconnectOnProtocolFailure(isSuspendReconnectOnProtocolFailure()).timeoutOptions(getTimeoutOptions());
 
         return builder;
     }
 
     /**
-     * Controls auto-reconnect behavior on connections. If auto-reconnect is {@code true} (default), it is enabled. As soon
-     * as a connection gets closed/reset without the intention to close it, the client will try to reconnect and re-issue any
-     * queued commands.
+     * Controls auto-reconnect behavior on connections. If auto-reconnect is {@code true} (default), it is enabled. As soon as a
+     * connection gets closed/reset without the intention to close it, the client will try to reconnect and re-issue any queued
+     * commands.
      *
      * This flag has also the effect that disconnected connections will refuse commands and cancel these with an exception.
      *
@@ -437,15 +559,25 @@ public class ClientOptions implements Serializable {
     }
 
     /**
-     * If this flag is {@code true} any queued commands will be canceled when a reconnect fails within the activation sequence.
-     * Default is {@code false}.
+     * Returns the {@link MaintNotificationsConfig} to listen for server events that notify on current maintenance activities.
      *
-     * @return {@code true} if commands should be cancelled on reconnect failures.
-     * @deprecated since 6.2, to be removed with 7.0. See {@link Builder#cancelCommandsOnReconnectFailure(boolean)}.
+     * @return {@link MaintNotificationsConfig}
+     * @since 7.0
+     * @see #DEFAULT_MAINT_NOTIFICATIONS_CONFIG
+     * @see #getMaintNotificationsConfig()
      */
-    @Deprecated
-    public boolean isCancelCommandsOnReconnectFailure() {
-        return cancelCommandsOnReconnectFailure;
+    public MaintNotificationsConfig getMaintNotificationsConfig() {
+        return maintNotificationsConfig;
+    }
+
+    /**
+     * Controls which {@link RedisCommand} will be replayed after a re-connect. The {@link Predicate} returns <code>true</code>
+     * if command should be filtered out and not replayed. Defaults to {@link #DEFAULT_REPLAY_FILTER}.
+     *
+     * @return the currently set {@link Predicate} used to filter out commands to replay
+     */
+    public Predicate<RedisCommand<?, ?, ?>> getReplayFilter() {
+        return replayFilter;
     }
 
     /**
@@ -459,21 +591,6 @@ public class ClientOptions implements Serializable {
     }
 
     /**
-     * Buffer usage ratio for {@link io.lettuce.core.protocol.CommandHandler}. This ratio controls how often bytes are discarded
-     * during decoding. In particular, when buffer usage reaches {@code bufferUsageRatio / bufferUsageRatio + 1}. E.g. setting
-     * {@code bufferUsageRatio} to {@literal 3}, will discard read bytes once the buffer usage reaches 75 percent.
-     *
-     * @return zero.
-     * @since 5.2
-     *
-     * @deprecated since 6.0 in favor of {@link DecodeBufferPolicy}.
-     */
-    @Deprecated
-    public int getBufferUsageRatio() {
-        return 0;
-    }
-
-    /**
      * Behavior for command invocation when connections are in a disconnected state. Defaults to
      * {@link DisconnectedBehavior#DEFAULT true}. See {@link #DEFAULT_DISCONNECTED_BEHAVIOR}.
      *
@@ -481,6 +598,25 @@ public class ClientOptions implements Serializable {
      */
     public DisconnectedBehavior getDisconnectedBehavior() {
         return disconnectedBehavior;
+    }
+
+    /**
+     * Behavior for re-authentication when the {@link RedisCredentialsProvider} emits new credentials. Defaults to
+     * {@link ReauthenticateBehavior#DEFAULT}.
+     *
+     * @return the currently set {@link ReauthenticateBehavior}.
+     */
+    public ReauthenticateBehavior getReauthenticateBehaviour() {
+        return reauthenticateBehavior;
+    }
+
+    /**
+     * Predicate to identify commands as read-only. Defaults to {@link #DEFAULT_READ_ONLY_COMMANDS}.
+     *
+     * @return the predicate to identify read-only commands.
+     */
+    public ReadOnlyCommands.ReadOnlyPredicate getReadOnlyCommands() {
+        return readOnlyCommands;
     }
 
     /**
@@ -495,12 +631,16 @@ public class ClientOptions implements Serializable {
     }
 
     /**
-     * Enables initial {@literal PING} barrier before any connection is usable. If {@code true} (default is {@code true} ),
-     * every connection and reconnect will issue a {@literal PING} command and awaits its response before the connection is
-     * activated and enabled for use. If the check fails, the connect/reconnect is treated as failure. This option has no effect
-     * unless forcing to use the RESP 2 protocol version.
+     * Perform a lightweight {@literal PING} connection handshake when establishing a Redis connection. If {@code true} (default
+     * is {@code true}), every connection and reconnect will issue a {@literal PING} command and await its response before the
+     * connection is activated and enabled for use. If the check fails, the connect/reconnect is treated as a failure. This
+     * option has no effect unless forced to use the RESP 2 protocol version. RESP 3/protocol discovery performs a {@code HELLO}
+     * handshake.
+     * <p>
+     * The {@literal PING} handshake validates whether the other end of the connected socket is a service that behaves like a
+     * Redis server.
      *
-     * @return {@code true} if {@literal PING} barrier is enabled.
+     * @return {@code true} if {@literal PING} handshake is enabled.
      */
     public boolean isPingBeforeActivateConnection() {
         return pingBeforeActivateConnection;
@@ -533,8 +673,8 @@ public class ClientOptions implements Serializable {
      * <p>
      * A single Redis connection operates on a single thread. Operations that require a significant amount of processing can
      * lead to a single-threaded-like behavior for all consumers of the Redis connection. When enabled, data signals will be
-     * emitted using a different thread served by {@link ClientResources#eventExecutorGroup()}. Defaults to {@code false} ,
-     * see {@link #DEFAULT_PUBLISH_ON_SCHEDULER}.
+     * emitted using a different thread served by {@link ClientResources#eventExecutorGroup()}. Defaults to {@code false} , see
+     * {@link #DEFAULT_PUBLISH_ON_SCHEDULER}.
      *
      * @return {@code true} to use a dedicated {@link reactor.core.scheduler.Scheduler}
      * @since 5.2
@@ -543,9 +683,8 @@ public class ClientOptions implements Serializable {
         return publishOnScheduler;
     }
 
-
     /**
-     * If this flag is {@code true} the reconnect will be suspended on protocol errors. Protocol errors are errors while SSL
+     * If this flag is {@code true}, the reconnect will be suspended on protocol errors. Protocol errors are errors while SSL
      * negotiation or when PING before connect fails.
      *
      * @return {@code true} if reconnect will be suspended on protocol errors.
@@ -562,6 +701,16 @@ public class ClientOptions implements Serializable {
      */
     public Charset getScriptCharset() {
         return scriptCharset;
+    }
+
+    /**
+     * Returns the currently set up {@link JsonParser}.
+     * 
+     * @return the implementation of the {@link JsonParser} to use.
+     * @since 6.5
+     */
+    public Supplier<JsonParser> getJsonParser() {
+        return jsonParser;
     }
 
     /**
@@ -590,6 +739,55 @@ public class ClientOptions implements Serializable {
      */
     public TimeoutOptions getTimeoutOptions() {
         return timeoutOptions;
+    }
+
+    /**
+     * Defines the re-authentication behavior of the Redis client.
+     * <p/>
+     * Certain implementations of the {@link RedisCredentialsProvider} could emit new credentials at runtime. This setting
+     * controls how the driver reacts to these newly emitted credentials.
+     */
+    public enum ReauthenticateBehavior {
+
+        /**
+         * This is the default behavior. The client will fetch current credentials from the underlying
+         * {@link RedisCredentialsProvider} only when the driver needs to, e.g. when the connection is first established or when
+         * it is re-established after a disconnect.
+         * <p/>
+         * <p>
+         * No re-authentication is performed when new credentials are emitted by a {@link RedisCredentialsProvider} that
+         * supports streaming. The client does not subscribe to or react to any updates in the credential stream provided by
+         * {@link RedisCredentialsProvider#credentials()}.
+         * </p>
+         */
+        DEFAULT,
+
+        /**
+         * Automatically triggers re-authentication whenever new credentials are emitted by a {@link RedisCredentialsProvider}
+         * that supports streaming, as indicated by {@link RedisCredentialsProvider#supportsStreaming()}.
+         *
+         * <p>
+         * When this behavior is enabled, the client subscribes to the credential stream provided by
+         * {@link RedisCredentialsProvider#credentials()} and issues an {@code AUTH} command to the Redis server each time new
+         * credentials are received. This behavior supports dynamic credential scenarios, such as token-based authentication, or
+         * credential rotation where credentials are refreshed periodically to maintain access.
+         * </p>
+         *
+         * <p>
+         * Note: {@code AUTH} commands issued as part of this behavior may interleave with user-submitted commands, as the
+         * client performs re-authentication independently of user command flow.
+         * </p>
+         */
+        ON_NEW_CREDENTIALS
+    }
+
+    /**
+     * Whether we should use hash indexed queue, which provides O(1) remove(Object)
+     *
+     * @return if hash indexed queue should be used
+     */
+    public boolean isUseHashIndexedQueue() {
+        return useHashIndexedQueue;
     }
 
     /**
